@@ -3,7 +3,9 @@
 // degrades gracefully so the UI never dead-ends.
 import { jsPDF } from 'jspdf'
 
-const BACKEND_URL = import.meta.env.VITE_CHART_API_URL || 'http://localhost:8000'
+// In dev → local FastAPI. In production (Vercel) → same-origin, where /api/* is
+// routed to the backend service by vercel.json. Override with VITE_CHART_API_URL.
+const BACKEND_URL = import.meta.env.VITE_CHART_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
 // A canned result used when the backend / mic is unavailable, so the flow is
 // always demoable.

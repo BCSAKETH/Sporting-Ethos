@@ -63,6 +63,7 @@ MOCK_NOTE = {
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health():
     return {"ok": True, "groq_configured": bool(GROQ_API_KEY)}
 
@@ -105,6 +106,7 @@ def structure(transcript: str) -> dict:
 
 
 @app.post("/api/chart")
+@app.post("/chart")
 def chart(audio: UploadFile = File(default=None), transcript: str = Form(default="")):
     """
     Accepts an audio file (preferred) and/or a text transcript.
