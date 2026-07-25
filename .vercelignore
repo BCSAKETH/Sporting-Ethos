@@ -1,0 +1,6 @@
+# Vercel deploys the Vite frontend only. The Python charting service (backend/)
+# is hosted separately (see backend/README.md), so keep it out of this build.
+backend
+scripts
+docs
+.claude
