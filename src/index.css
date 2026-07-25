@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  background:
+    radial-gradient(900px 500px at 100% -5%, #ecfdf5 0%, transparent 55%),
+    radial-gradient(700px 450px at -5% 0%, #eff6ff 0%, transparent 50%),
+    #f6f7f9;
+  background-attachment: fixed;
+}
+
+/* Accessible, on-brand focus ring for keyboard users. */
+:where(button, a, input, select, [tabindex]):focus-visible {
+  outline: 2px solid #10b981;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
+  }
+  .input {
+    @apply mt-1 w-full rounded-xl border border-slate-300 px-4 py-3.5 text-lg outline-none transition
+      focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200;
+  }
+}
+
+/* Subtle, functional motion only — no decoration for its own sake. */
+@keyframes flash-in {
+  0% { background-color: #d1fae5; }
+  100% { background-color: #ffffff; }
+}
+.flash-in {
+  animation: flash-in 1.4s ease-out;
+}
+
+@keyframes fade-up {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.fade-up {
+  animation: fade-up 0.25s ease-out;
+}
+
+/* Attention-grabbing blink for the intercom "incoming call" banner. */
+@keyframes ring-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.ring-blink {
+  animation: ring-blink 0.9s ease-in-out infinite;
+}
+@keyframes bell-shake {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(14deg); }
+  40% { transform: rotate(-12deg); }
+  60% { transform: rotate(8deg); }
+  80% { transform: rotate(-6deg); }
+}
+.bell-shake {
+  display: inline-block;
+  animation: bell-shake 0.8s ease-in-out infinite;
+  transform-origin: 50% 0;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
