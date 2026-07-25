@@ -41,14 +41,26 @@ export async function startRecording() {
   }
 }
 
-// Send audio (and/or a transcript) to the backend for structuring.
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onloadend = () => resolve(String(r.result).split(',')[1] || '')
+    r.onerror = reject
+    r.readAsDataURL(blob)
+  })
+}
+
+// Send audio (and/or a transcript) to the charting API for structuring.
+// Uses JSON (base64 audio) so it works with both the local FastAPI backend and
+// the Vercel Node serverless function.
 export async function generateNotes({ audioBlob, transcript = '' }) {
   try {
-    const form = new FormData()
-    if (audioBlob) form.append('audio', audioBlob, 'consult.webm')
-    if (transcript) form.append('transcript', transcript)
-
-    const res = await fetch(`${BACKEND_URL}/api/chart`, { method: 'POST', body: form })
+    const audioBase64 = audioBlob ? await blobToBase64(audioBlob) : ''
+    const res = await fetch(`${BACKEND_URL}/api/chart`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audioBase64, transcript, mime: audioBlob?.type || 'audio/webm' }),
+    })
     if (!res.ok) throw new Error(`Backend responded ${res.status}`)
     return await res.json()
   } catch (e) {

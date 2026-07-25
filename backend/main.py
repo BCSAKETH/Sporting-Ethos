@@ -15,13 +15,15 @@ Run it:
     uvicorn main:app --reload --port 8000
 """
 
+import base64
 import json
 import os
 
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 # Load backend/.env if present, so the key survives restarts with no shell setup.
 load_dotenv()
@@ -105,14 +107,20 @@ def structure(transcript: str) -> dict:
     return json.loads(content)
 
 
+class ChartIn(BaseModel):
+    audioBase64: str | None = None
+    transcript: str | None = ""
+    mime: str | None = "audio/webm"
+
+
 @app.post("/api/chart")
 @app.post("/chart")
-def chart(audio: UploadFile = File(default=None), transcript: str = Form(default="")):
+def chart(body: ChartIn):
     """
-    Accepts an audio file (preferred) and/or a text transcript.
+    Accepts JSON: { audioBase64, transcript, mime }.
     Returns structured clinical notes.
     """
-    transcript_text = (transcript or "").strip()
+    transcript_text = (body.transcript or "").strip()
 
     # No key configured -> return a labelled sample so the UI still works.
     if not GROQ_API_KEY:
@@ -121,10 +129,10 @@ def chart(audio: UploadFile = File(default=None), transcript: str = Form(default
         return note
 
     try:
-        if audio is not None:
-            audio_bytes = audio.file.read()
+        if body.audioBase64:
+            audio_bytes = base64.b64decode(body.audioBase64)
             if audio_bytes:
-                transcript_text = transcribe(audio_bytes, audio.filename)
+                transcript_text = transcribe(audio_bytes, "audio.webm")
 
         if not transcript_text:
             return {**MOCK_NOTE, "engine": "mock",

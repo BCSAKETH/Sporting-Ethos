@@ -38,8 +38,24 @@ let channelSeq = 0 // ensures every Supabase realtime channel name is unique
 // Helpers
 // --------------------------------------------------------------------------
 const nowIso = () => new Date().toISOString()
-const newId = () =>
-  crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2)
+
+// A valid UUID v4 in ALL contexts. crypto.randomUUID is only available on
+// HTTPS/localhost, so on an insecure http:// LAN (phone over Wi-Fi) we build a
+// proper UUID from crypto.getRandomValues (available everywhere) or Math.random.
+function newId() {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
+  } catch {
+    /* fall through */
+  }
+  const b = new Uint8Array(16)
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) crypto.getRandomValues(b)
+  else for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256)
+  b[6] = (b[6] & 0x0f) | 0x40 // version 4
+  b[8] = (b[8] & 0x3f) | 0x80 // variant
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0'))
+  return `${h.slice(0, 4).join('')}-${h.slice(4, 6).join('')}-${h.slice(6, 8).join('')}-${h.slice(8, 10).join('')}-${h.slice(10, 16).join('')}`
+}
 
 // Queue ordering: emergencies first, then by arrival time (oldest first).
 export function sortQueue(rows) {
