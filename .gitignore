@@ -1,10 +1,10 @@
-node_modules
-dist
+node_modules/
+dist/
 .env
-# Python charting backend is kept local only; on Vercel, charting runs via
-# the native Node functions in /api. This keeps Vercel from detecting FastAPI.
-backend/
 .env.local
+*.apk
 *.log
 .DS_Store
 .vite
+backend/
+

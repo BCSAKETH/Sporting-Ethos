@@ -62,6 +62,12 @@ export default function Dashboard() {
     return () => clearInterval(t)
   }, [])
 
+  const [departments, setDepartments] = useState([])
+
+  useEffect(() => {
+    import('../lib/store.js').then((m) => m.listDepartments()).then(setDepartments).catch(console.error)
+  }, [])
+
   useEffect(() => {
     const unsub = subscribe((next) => {
       if (seenIds.current === null) {
@@ -93,6 +99,14 @@ export default function Dashboard() {
     return unsub
   }, [])
 
+  const rowsWithDept = useMemo(() => {
+    const deptMap = new Map(departments.map((d) => [d.id, d.name]))
+    return rows.map((r) => ({
+      ...r,
+      department_name: r.department_name || (r.department_id ? deptMap.get(r.department_id) : null),
+    }))
+  }, [rows, departments])
+
   async function handleReset() {
     if (!confirm('Clear the whole queue? (demo reset)')) return
     await resetAll()
@@ -112,9 +126,9 @@ export default function Dashboard() {
     updateStatus(id, status)
   }
 
-  const activeQueue = useMemo(() => sortQueue(rows.filter(isActive)), [rows])
-  const inConsult = rows.filter((r) => r.status === STATUS.IN_CONSULT)
-  const finished = rows.filter(
+  const activeQueue = useMemo(() => sortQueue(rowsWithDept.filter(isActive)), [rowsWithDept])
+  const inConsult = rowsWithDept.filter((r) => r.status === STATUS.IN_CONSULT)
+  const finished = rowsWithDept.filter(
     (r) => r.status === STATUS.DONE || r.status === STATUS.LEFT || r.status === STATUS.NO_SHOW
   )
   const metrics = {
@@ -298,15 +312,27 @@ function AddPatientModal({ onClose }) {
   const [name, setName] = useState('')
   const [age, setAge] = useState('')
   const [gender, setGender] = useState('')
+  const [departmentId, setDepartmentId] = useState('')
+  const [departments, setDepartments] = useState([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+
+  useEffect(() => {
+    import('../lib/store.js').then((m) => m.listDepartments()).then(setDepartments).catch(console.error)
+  }, [])
 
   async function submit(e) {
     e.preventDefault()
     if (!name.trim()) return setErr('Enter a name.')
     setBusy(true)
     try {
-      await createCheckin({ name: name.trim(), age: age || null, gender: gender || null, source: 'reception' })
+      await createCheckin({
+        name: name.trim(),
+        age: age || null,
+        gender: gender || null,
+        source: 'reception',
+        department_id: departmentId || null,
+      })
       onClose()
     } catch (e2) {
       console.error(e2)
@@ -336,6 +362,23 @@ function AddPatientModal({ onClose }) {
               ))}
             </div>
           </div>
+
+          {departments.length > 0 && (
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Department</span>
+              <select
+                value={departmentId}
+                onChange={(e) => setDepartmentId(e.target.value)}
+                className="input mt-1 w-full"
+              >
+                <option value="">General / Unassigned</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {err && <p className="text-sm text-red-600">{err}</p>}
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-slate-200 py-3 font-medium text-slate-600 hover:bg-slate-50">Cancel</button>

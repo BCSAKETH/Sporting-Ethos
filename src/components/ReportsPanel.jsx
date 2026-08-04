@@ -48,6 +48,52 @@ function topKey(counts, exclude = []) {
   return e.length ? e[0][0] : '—'
 }
 
+// Fuzzy string similarity (Levenshtein distance)
+function levenshtein(a, b) {
+  const m = a.length, n = b.length
+  if (!m) return n
+  if (!n) return m
+  const d = Array.from({ length: m + 1 }, (_, i) => [i])
+  for (let j = 1; j <= n; j++) d[0][j] = j
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost)
+    }
+  }
+  return d[m][n]
+}
+
+function findSimilarNameMatches(rows) {
+  const map = new Map() // id -> array of similar name strings
+  const cleaned = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    norm: (r.name || '').toLowerCase().trim().replace(/[^a-z0-9 ]/g, ''),
+  }))
+
+  for (let i = 0; i < cleaned.length; i++) {
+    for (let j = i + 1; j < cleaned.length; j++) {
+      const a = cleaned[i]
+      const b = cleaned[j]
+      if (!a.norm || !b.norm) continue
+
+      // Exact match or Levenshtein distance <= 2 for names > 4 chars, or distance <= 1 for shorter
+      const maxDist = Math.min(a.norm.length, b.norm.length) > 5 ? 2 : 1
+      const dist = levenshtein(a.norm, b.norm)
+      const isSimilar = dist <= maxDist || a.norm.startsWith(b.norm) || b.norm.startsWith(a.norm)
+
+      if (isSimilar) {
+        if (!map.has(a.id)) map.set(a.id, [])
+        if (!map.has(b.id)) map.set(b.id, [])
+        map.get(a.id).push(b.name)
+        map.get(b.id).push(a.name)
+      }
+    }
+  }
+  return map
+}
+
 export default function ReportsPanel() {
   const [rows, setRows] = useState([])
   const [scope, setScope] = useState('today')
@@ -65,6 +111,8 @@ export default function ReportsPanel() {
       .filter((r) => status === 'All' || r.status === status)
       .sort((a, b) => new Date(b.check_in_time) - new Date(a.check_in_time)),
   [rows, scope, gender, group, status])
+
+  const similarNamesMap = useMemo(() => findSimilarNameMatches(filtered), [filtered])
 
   const arrivals = useMemo(() => buildArrivals(filtered), [filtered])
   const genderCounts = useMemo(() => tally(filtered.map((r) => r.gender || 'Unknown')), [filtered])
@@ -120,15 +168,17 @@ export default function ReportsPanel() {
       'Reason (from consult)': reasonOf(r) || '',
       'Pharmacy bill (Rs.)': r.pharmacy?.paid ? Number(r.pharmacy.total || 0) : '',
       'Checked in': new Date(r.check_in_time).toLocaleString(), 'Time in clinic (min)': minutesSince(r.check_in_time),
+      'Similar Name Alert': similarNamesMap.has(r.id) ? `Similar to: ${similarNamesMap.get(r.id).join(', ')}` : 'No',
     }))
     const ws = XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No patients match the current filters' }])
-    ws['!cols'] = [{ wch: 18 }, { wch: 6 }, { wch: 10 }, { wch: 9 }, { wch: 13 }, { wch: 14 }, { wch: 9 }, { wch: 12 }, { wch: 30 }, { wch: 14 }, { wch: 22 }, { wch: 18 }]
+    ws['!cols'] = [{ wch: 18 }, { wch: 6 }, { wch: 10 }, { wch: 9 }, { wch: 13 }, { wch: 14 }, { wch: 9 }, { wch: 12 }, { wch: 30 }, { wch: 14 }, { wch: 22 }, { wch: 18 }, { wch: 30 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Patients')
     XLSX.writeFile(wb, `sporting-ethos-report-${scope}-${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
   const anyFilter = gender !== 'All' || group !== 'All' || status !== 'All'
+  const similarCount = similarNamesMap.size
 
   return (
     <div className="space-y-5">
@@ -155,6 +205,18 @@ export default function ReportsPanel() {
           )}
         </div>
       </div>
+
+      {similarCount > 0 && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 flex items-center justify-between gap-3 text-amber-900">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl">⚠️</span>
+            <div>
+              <span className="font-semibold text-sm">Similar Name Alert ({similarCount} patients)</span>
+              <p className="text-xs text-amber-800">Multiple patients with identical or closely sounding names were detected. Review highlighted table entries to avoid chart misassignment.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* KPI hero */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -240,11 +302,23 @@ export default function ReportsPanel() {
                 <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No patients match these filters.</td></tr>
               ) : filtered.map((r) => {
                 const reason = reasonOf(r)
+                const similarTo = similarNamesMap.get(r.id)
+
                 return (
-                <tr key={r.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+                <tr key={r.id} className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/60 ${similarTo ? 'bg-amber-50/40' : ''}`}>
                   <Td>
-                    <span className="font-medium text-slate-800">{r.name}</span>
-                    {r.priority === 'emergency' && <span className="ml-2 text-[10px] font-bold text-rose-600 uppercase">Emergency</span>}
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-slate-800">{r.name}</span>
+                      {similarTo && (
+                        <span
+                          title={`Similar name match: ${similarTo.join(', ')}`}
+                          className="cursor-help inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300"
+                        >
+                          ⚠️ Similar ({similarTo.length})
+                        </span>
+                      )}
+                      {r.priority === 'emergency' && <span className="ml-1 text-[10px] font-bold text-rose-600 uppercase">Emergency</span>}
+                    </div>
                   </Td>
                   <Td>{r.age ?? '—'}</Td>
                   <Td>{r.gender || '—'}</Td>

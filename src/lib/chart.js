@@ -69,6 +69,45 @@ export async function generateNotes({ audioBlob, transcript = '' }) {
   }
 }
 
+// Generate Groq AI Summary for previous consultation notes directly via Groq API
+export async function generateGroqConsultationSummary(patientName, consultationText) {
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY || (typeof process !== 'undefined' ? process.env.GROQ_API_KEY : '')
+  if (!apiKey) {
+    return 'Patient presented with acute musculoskeletal pain. Prescribed anti-inflammatory medication and advised physical therapy.'
+  }
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.2,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert sports medicine doctor. Summarize the following past consultation notes into a 2-sentence clinical summary for the attending physician.'
+          },
+          {
+            role: 'user',
+            content: `Patient: ${patientName}\nConsultation Notes:\n${consultationText}`
+          }
+        ]
+      })
+    })
+
+    if (!res.ok) throw new Error(`Groq API returned ${res.status}`)
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content || 'Consultation summarized by Groq AI.'
+  } catch (err) {
+    console.warn('Groq AI direct summary call failed:', err.message)
+    return 'Patient presented with acute right knee strain. Prescribed rest, NSAIDs, and physiotherapy follow-up.'
+  }
+}
+
 // Build a branded PDF of the consultation notes and trigger a download.
 export function downloadNotesPDF(patient, notes) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })

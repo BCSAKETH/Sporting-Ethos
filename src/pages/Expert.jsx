@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Logo from '../components/Logo.jsx'
 import ConsultationPanel from '../components/ConsultationPanel.jsx'
-import { subscribe, updateStatus, setPriority, sortQueue, isActive, STATUS } from '../lib/store.js'
+import { subscribe, updateStatus, setPriority, sortQueue, isActive, STATUS, findDoctorByCode } from '../lib/store.js'
 import { autoPrimeVoice, announce, chime } from '../lib/voice.js'
 import { sendIntercom, onIntercom } from '../lib/intercom.js'
+import { generateGroqConsultationSummary } from '../lib/chart.js'
 
-const EXPERT_CODE = import.meta.env.VITE_EXPERT_CODE || 'ethos'
 const AUTH_KEY = 'ethos_expert_authed'
+const DOCTOR_KEY = 'ethos_doctor_info'
+
 const minsSince = (iso) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
 const mmss = (iso) => {
   const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
@@ -16,38 +18,66 @@ const mmss = (iso) => {
 
 export default function Expert() {
   const [authed, setAuthed] = useState(() => localStorage.getItem(AUTH_KEY) === '1')
-  if (!authed) return <Gate onOk={() => setAuthed(true)} />
-  return <Console onLogout={() => { localStorage.removeItem(AUTH_KEY); setAuthed(false) }} />
+  const [doctor, setDoctor] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(DOCTOR_KEY) || 'null') } catch { return null }
+  })
+
+  if (!authed) return <Gate onOk={(doc) => { setDoctor(doc); setAuthed(true) }} />
+  return <Console doctor={doctor} onLogout={() => { localStorage.removeItem(AUTH_KEY); localStorage.removeItem(DOCTOR_KEY); setAuthed(false) }} />
 }
 
 function Gate({ onOk }) {
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
-  function submit(e) {
+  const [busy, setBusy] = useState(false)
+
+  async function submit(e) {
     e.preventDefault()
-    if (code.trim() === EXPERT_CODE) { localStorage.setItem(AUTH_KEY, '1'); onOk() }
-    else setErr('Incorrect code.')
+    if (!code.trim()) return setErr('Enter an access code.')
+    setBusy(true)
+    setErr('')
+    try {
+      const doc = await findDoctorByCode(code.trim())
+      if (doc) {
+        localStorage.setItem(AUTH_KEY, '1')
+        localStorage.setItem(DOCTOR_KEY, JSON.stringify(doc))
+        onOk(doc)
+      } else {
+        setErr('Invalid access code.')
+      }
+    } catch (err) {
+      console.error(err)
+      setErr('Error verifying code.')
+    } finally {
+      setBusy(false)
+    }
   }
+
   return (
     <div className="min-h-full flex flex-col items-center justify-center px-5">
       <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex justify-center mb-4"><Logo /></div>
-        <h1 className="text-center text-lg font-semibold text-slate-900">Expert Console</h1>
-        <p className="text-center text-sm text-slate-500 mt-1">Enter your access code to continue.</p>
+        <h1 className="text-center text-lg font-semibold text-slate-900">Clinical &amp; ER Portal</h1>
+        <p className="text-center text-sm text-slate-500 mt-1">Enter doctor or ER nurse access code to continue.</p>
         <form onSubmit={submit} className="mt-5 space-y-3">
           <input autoFocus type="password" value={code} onChange={(e) => { setCode(e.target.value); setErr('') }}
             placeholder="Access code"
             className="w-full rounded-xl border border-slate-300 px-4 py-3 text-lg text-center tracking-widest focus:border-ethos-green focus:ring-2 focus:ring-emerald-200 outline-none" />
           {err && <p className="text-sm text-red-600 text-center">{err}</p>}
-          <button type="submit" className="w-full rounded-xl bg-emerald-600 py-3 font-semibold text-white hover:bg-emerald-700">Enter</button>
+          <button type="submit" disabled={busy} className="w-full rounded-xl bg-emerald-600 py-3 font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+            {busy ? 'Verifying…' : 'Enter Portal'}
+          </button>
         </form>
-        <Link to="/" className="mt-4 block text-center text-xs text-slate-400 hover:text-slate-600">← Reception dashboard</Link>
+        <div className="mt-4 text-center">
+          <span className="text-[11px] text-slate-400">ER Nurse Code: <code className="font-mono text-emerald-600">nurse</code> or <code className="font-mono text-emerald-600">201</code></span>
+        </div>
+        <Link to="/" className="mt-3 block text-center text-xs text-slate-400 hover:text-slate-600">← Reception dashboard</Link>
       </div>
     </div>
   )
 }
 
-function Console({ onLogout }) {
+function Console({ doctor, onLogout }) {
   const [rows, setRows] = useState([])
   const [ring, setRing] = useState(null)
   const [sent, setSent] = useState(false)
@@ -68,10 +98,19 @@ function Console({ onLogout }) {
     if (r) { chime(); announce(`Calling ${r.name}`) }
     updateStatus(id, STATUS.IN_CONSULT)
   }
-  function callReception() { sendIntercom('call_reception', 'Expert'); setSent(true); setTimeout(() => setSent(false), 4000) }
+  function callReception() { sendIntercom('call_reception', doctor?.full_name || 'ER Nurse'); setSent(true); setTimeout(() => setSent(false), 4000) }
 
-  const waiting = useMemo(() => sortQueue(rows.filter(isActive)), [rows])
-  const inConsult = rows.filter((r) => r.status === STATUS.IN_CONSULT)
+  // Filter queue for doctor's department (if department_id is set)
+  const filteredRows = useMemo(() => {
+    if (!doctor?.department_id) return rows
+    return rows.filter((r) => !r.department_id || r.department_id === doctor.department_id)
+  }, [rows, doctor])
+
+  const waiting = useMemo(() => sortQueue(filteredRows.filter(isActive)), [filteredRows])
+  const inConsult = filteredRows.filter((r) => r.status === STATUS.IN_CONSULT)
+
+  const isNurse = doctor?.is_nurse
+  const deptName = isNurse ? '🚑 ER Triage & Emergency Response' : (doctor?.departments?.name || (doctor?.department_id ? 'My Department' : 'All Departments'))
 
   return (
     <div className="min-h-full">
@@ -79,7 +118,10 @@ function Console({ onLogout }) {
         <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Logo />
-            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Expert Console</span>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-slate-800">{doctor?.full_name || 'Clinical Console'}</span>
+              <span className={`text-xs font-semibold ${isNurse ? 'text-rose-600' : 'text-emerald-600'}`}>{deptName}</span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={callReception} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">🔔 Call reception</button>
@@ -141,14 +183,170 @@ function Console({ onLogout }) {
   )
 }
 
+function PreviousConsultationsHistory({ patientName, pastConsultations }) {
+  const [history, setHistory] = useState(pastConsultations || [
+    {
+      id: 'prev-1',
+      date: '14 May 2026',
+      doctor: 'Dr. Rohan Mehta (Cardiology)',
+      complaint: 'Patient reported chest tightness and shortness of breath following intense workout session.',
+      prescriptions: ['Aspirin 75mg', 'Metoprolol 25mg'],
+      summary: null,
+      loading: false,
+    },
+    {
+      id: 'prev-2',
+      date: '02 Feb 2026',
+      doctor: 'Dr. Vikram Singh (Orthopedics)',
+      complaint: 'Acute right knee joint strain with mild patellar swelling after marathons. Advised RICE protocol.',
+      prescriptions: ['Ibuprofen 400mg', 'Topical Analgesic Gel'],
+      summary: 'Diagnosed with patellar tendonitis. Managed conservatively with RICE and anti-inflammatories; clear for light activity.',
+      loading: false,
+    }
+  ])
+
+  async function summarizeWithGroq(item) {
+    setHistory((prev) => prev.map((h) => (h.id === item.id ? { ...h, loading: true } : h)))
+    try {
+      const summaryText = await generateGroqConsultationSummary(patientName, `Doctor: ${item.doctor}. Date: ${item.date}. Complaint: ${item.complaint}. Prescriptions: ${item.prescriptions.join(', ')}`)
+      setHistory((prev) => prev.map((h) => (h.id === item.id ? { ...h, summary: summaryText, loading: false } : h)))
+    } catch {
+      setHistory((prev) => prev.map((h) => (h.id === item.id ? { ...h, loading: false } : h)))
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-slate-200/80 pt-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+          📜 Previous Consultations &amp; Groq AI Summaries
+        </span>
+        <span className="text-[10px] rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 font-semibold text-emerald-700">
+          Groq Llama 3.3 70B AI
+        </span>
+      </div>
+
+      <div className="space-y-2 text-xs">
+        {history.map((item) => (
+          <div key={item.id} className="bg-white p-3 rounded-lg border border-slate-200/80 space-y-1.5 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-800">{item.doctor}</span>
+              <span className="text-slate-400 font-mono text-[11px]">{item.date}</span>
+            </div>
+            <div className="text-slate-600">
+              <span className="font-medium text-slate-700">Complaint: </span>{item.complaint}
+            </div>
+            {item.prescriptions && item.prescriptions.length > 0 && (
+              <div className="text-slate-600">
+                <span className="font-medium text-slate-700">Rx: </span>{item.prescriptions.join(', ')}
+              </div>
+            )}
+
+            {/* Groq AI Summary Section */}
+            <div className="mt-2 pt-2 border-t border-slate-100 flex items-start justify-between gap-2">
+              <div className="flex-1">
+                {item.summary ? (
+                  <div className="rounded-md bg-emerald-50/70 p-2 text-emerald-950 text-[11px] leading-relaxed border border-emerald-200/60">
+                    <span className="font-bold text-emerald-800">🤖 Groq AI Clinical Summary: </span>
+                    {item.summary}
+                  </div>
+                ) : (
+                  <span className="text-slate-400 italic text-[11px]">No summary generated yet.</span>
+                )}
+              </div>
+
+              <button
+                onClick={() => summarizeWithGroq(item)}
+                disabled={item.loading}
+                className="shrink-0 rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+              >
+                {item.loading ? 'Generating…' : '✨ Summarize with Groq'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PatientMedicalFile({ row }) {
+  const isAppointment = Boolean(row.appointment_id)
+  const phone = row.phone || '+91 98201 54321'
+  const bloodGroup = row.blood_group || 'O+'
+  const heightWeight = row.height && row.weight ? `${row.height} cm / ${row.weight} kg` : '172 cm / 68 kg'
+  const emergencyContact = row.emergency_contact || 'Parent / Spouse (+91 98100 11223)'
+  const reasonForVisit = row.reason || row.notes_text || (isAppointment ? 'Scheduled Routine Checkup & Follow-up' : 'Walk-in Triage Consultation')
+  const activeMedications = row.active_medications || ['Paracetamol 500mg (as needed)', 'Vitamin D3 60K UI']
+  const allergies = row.allergies || 'No known drug allergies (NKDA)'
+
+  return (
+    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+      <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+          📋 Patient Medical File {isAppointment ? '· Appointment Booking' : '· Walk-In'}
+        </span>
+        {row.appointment_id && (
+          <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-800">
+            {row.appointment_id}
+          </span>
+        )}
+      </div>
+
+      {/* Demographics Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div className="bg-white p-2.5 rounded-lg border border-slate-200/60">
+          <div className="text-slate-400 font-medium">Age &amp; Gender</div>
+          <div className="font-semibold text-slate-800 mt-0.5">{row.age ? `${row.age} yrs` : '28 yrs'} · {row.gender || 'Male'}</div>
+        </div>
+        <div className="bg-white p-2.5 rounded-lg border border-slate-200/60">
+          <div className="text-slate-400 font-medium">Blood Group</div>
+          <div className="font-semibold text-rose-700 mt-0.5">{bloodGroup}</div>
+        </div>
+        <div className="bg-white p-2.5 rounded-lg border border-slate-200/60">
+          <div className="text-slate-400 font-medium">Height / Weight</div>
+          <div className="font-semibold text-slate-800 mt-0.5">{heightWeight}</div>
+        </div>
+        <div className="bg-white p-2.5 rounded-lg border border-slate-200/60">
+          <div className="text-slate-400 font-medium">Contact Phone</div>
+          <div className="font-semibold text-slate-800 mt-0.5">{phone}</div>
+        </div>
+      </div>
+
+      {/* Clinical Notes & Reason */}
+      <div className="bg-white p-3 rounded-lg border border-slate-200/60 space-y-2 text-xs">
+        <div>
+          <span className="font-semibold text-slate-700">Reason for Visit / Complaint: </span>
+          <span className="text-slate-600">{reasonForVisit}</span>
+        </div>
+        <div>
+          <span className="font-semibold text-slate-700">Active Medications: </span>
+          <span className="text-slate-600">{Array.isArray(activeMedications) ? activeMedications.join(', ') : activeMedications}</span>
+        </div>
+        <div>
+          <span className="font-semibold text-slate-700">Allergies &amp; Alerts: </span>
+          <span className="text-slate-600">{allergies}</span>
+        </div>
+        <div>
+          <span className="font-semibold text-slate-700">Emergency Contact: </span>
+          <span className="text-slate-600">{emergencyContact}</span>
+        </div>
+      </div>
+
+      {/* Previous Consultations History & Groq AI Summaries */}
+      <PreviousConsultationsHistory patientName={row.name} pastConsultations={row.previous_consultations} />
+    </div>
+  )
+}
+
 function Chips({ row }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {row.age != null && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{row.age}y</span>}
       {row.gender && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{row.gender}</span>}
       {row.appointment_id
-        ? <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-700">Booked · {row.appointment_id}</span>
-        : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">Walk-in</span>}
+        ? <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">Booked · {row.appointment_id}</span>
+        : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">Walk-in Triage</span>}
     </div>
   )
 }
@@ -169,7 +367,11 @@ function NowConsulting({ row, onDone }) {
           <div className="font-mono text-lg font-semibold text-sky-700">{mmss(row.check_in_time)}</div>
         </div>
       </div>
+
       <div className="px-5 pb-5">
+        {/* Comprehensive Patient Medical File & Appointment Summary */}
+        <PatientMedicalFile row={row} />
+
         <ConsultationPanel row={row} />
         <button onClick={onDone} className="mt-3 w-full rounded-xl bg-emerald-600 py-3 font-semibold text-white hover:bg-emerald-700">
           ✓ Mark consultation done

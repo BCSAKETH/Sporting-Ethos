@@ -259,64 +259,232 @@ function Counter({ meds }) {
 }
 
 /* ---- Inventory management ---- */
+function getExpiryStatus(expiryDate) {
+  if (!expiryDate) return null
+  const exp = new Date(expiryDate)
+  const now = new Date()
+  const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 3600 * 24))
+  if (diffDays < 0) return { label: 'EXPIRED', color: 'bg-rose-100 text-rose-700 border-rose-300' }
+  if (diffDays <= 30) return { label: `Expires in ${diffDays}d`, color: 'bg-amber-100 text-amber-700 border-amber-300' }
+  return { label: `Exp: ${expiryDate}`, color: 'bg-slate-100 text-slate-600 border-slate-200' }
+}
+
 function Inventory({ meds }) {
   const [name, setName] = useState('')
   const [price, setPrice] = useState('')
-  const [stock, setStock] = useState('')
   const [category, setCategory] = useState('')
+
+  // First batch details
+  const [batchNo, setBatchNo] = useState('')
+  const [stock, setStock] = useState('')
+  const [expiryDate, setExpiryDate] = useState('')
+
+  // Restock modal
+  const [restockMed, setRestockMed] = useState(null)
 
   async function add(e) {
     e.preventDefault()
     if (!name.trim()) return
-    await addMedicine({ name: name.trim(), price: Number(price) || 0, stock: Number(stock) || 0, category: category.trim() || null })
-    setName(''); setPrice(''); setStock(''); setCategory('')
+
+    const initialStock = Number(stock) || 0
+    const batches = []
+    if (initialStock > 0 || expiryDate || batchNo) {
+      batches.push({
+        batch_no: batchNo.trim() || 'B1',
+        qty: initialStock,
+        expiry_date: expiryDate || null,
+      })
+    }
+
+    await addMedicine({
+      name: name.trim(),
+      price: Number(price) || 0,
+      stock: initialStock,
+      category: category.trim() || null,
+      batches,
+    })
+
+    setName(''); setPrice(''); setStock(''); setCategory(''); setBatchNo(''); setExpiryDate('')
   }
 
   return (
     <div className="space-y-5">
-      <form onSubmit={add} className="card p-4 grid gap-3 sm:grid-cols-5 items-end">
-        <label className="sm:col-span-2 block"><span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Medicine</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className="input !text-base !py-2.5" /></label>
-        <label className="block"><span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Price (₹)</span>
-          <input value={price} inputMode="decimal" onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="0" className="input !text-base !py-2.5" /></label>
-        <label className="block"><span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Stock</span>
-          <input value={stock} inputMode="numeric" onChange={(e) => setStock(e.target.value.replace(/[^0-9]/g, ''))} placeholder="0" className="input !text-base !py-2.5" /></label>
-        <div className="flex gap-2">
-          <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" className="input !text-base !py-2.5" />
-          <button className="rounded-xl bg-emerald-600 px-4 font-semibold text-white hover:bg-emerald-700 shrink-0">Add</button>
+      <form onSubmit={add} className="card p-5 space-y-4">
+        <div className="text-sm font-semibold uppercase tracking-wider text-slate-400">Add New Medicine</div>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <label className="sm:col-span-2 block">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Medicine Name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Paracetamol 500mg" className="input mt-1" />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Price (₹)</span>
+            <input value={price} inputMode="decimal" onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00" className="input mt-1" />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Category</span>
+            <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Analgesic" className="input mt-1" />
+          </label>
+        </div>
+
+        <div className="border-t border-slate-100 pt-3">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Initial Batch Details</span>
+          <div className="mt-2 grid gap-3 sm:grid-cols-3">
+            <input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} placeholder="Batch No (e.g. B-101)" className="input" />
+            <input value={stock} inputMode="numeric" onChange={(e) => setStock(e.target.value.replace(/[^0-9]/g, ''))} placeholder="Initial Stock Qty" className="input" />
+            <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="input" />
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <button className="rounded-xl bg-emerald-600 px-6 py-2.5 font-semibold text-white hover:bg-emerald-700">Add Medicine</button>
         </div>
       </form>
 
       <div className="card overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 text-xs font-semibold uppercase tracking-wider text-slate-400">Inventory · {meds.length}</div>
+        <div className="px-4 py-3 border-b border-slate-100 text-xs font-semibold uppercase tracking-wider text-slate-400">Inventory &amp; Batches · {meds.length}</div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs uppercase tracking-wider text-slate-400 border-b border-slate-100">
-              <th className="px-4 py-2">Medicine</th><th className="px-4 py-2">Category</th><th className="px-4 py-2">Price (₹)</th><th className="px-4 py-2">Stock</th><th className="px-4 py-2"></th>
-            </tr></thead>
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                <th className="px-4 py-2">Medicine</th>
+                <th className="px-4 py-2">Price (₹)</th>
+                <th className="px-4 py-2">Total Stock</th>
+                <th className="px-4 py-2">Batches &amp; Expiry Dates</th>
+                <th className="px-4 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
             <tbody>
               {meds.length === 0 ? (
                 <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">No medicines yet — add some above.</td></tr>
-              ) : meds.map((m) => (
-                <tr key={m.id} className="border-b border-slate-50 last:border-0">
-                  <td className="px-4 py-2.5 font-medium text-slate-800">{m.name}</td>
-                  <td className="px-4 py-2.5 text-slate-500">{m.category || '—'}</td>
-                  <td className="px-4 py-2.5">
-                    <input defaultValue={m.price} onBlur={(e) => updateMedicine(m.id, { price: Number(e.target.value) || 0 })}
-                      className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm" />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <input defaultValue={m.stock} onBlur={(e) => updateMedicine(m.id, { stock: Number(e.target.value) || 0 })}
-                      className={`w-20 rounded-lg border px-2 py-1 text-sm ${m.stock <= 10 ? 'border-rose-300 text-rose-600' : 'border-slate-200'}`} />
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <button onClick={() => deleteMedicine(m.id)} className="text-slate-300 hover:text-rose-500">Delete</button>
-                  </td>
-                </tr>
-              ))}
+              ) : meds.map((m) => {
+                const batches = m.batches && Array.isArray(m.batches) && m.batches.length > 0
+                  ? m.batches
+                  : [{ batch_no: 'Default', qty: m.stock || 0, expiry_date: m.expiry_date || null }]
+
+                const totalQty = batches.reduce((s, b) => s + Number(b.qty || 0), 0)
+
+                return (
+                  <tr key={m.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-800">{m.name}</div>
+                      <div className="text-xs text-slate-400">{m.category || 'Uncategorized'}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <input defaultValue={m.price} onBlur={(e) => updateMedicine(m.id, { price: Number(e.target.value) || 0 })}
+                        className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`font-semibold tabular-nums ${totalQty <= 10 ? 'text-rose-600' : 'text-slate-800'}`}>
+                        {totalQty}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {batches.map((b, i) => {
+                          const status = getExpiryStatus(b.expiry_date)
+                          return (
+                            <span key={i} className={`inline-flex items-center gap-1 text-xs rounded-md border px-2 py-1 ${status ? status.color : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                              <span className="font-medium">{b.batch_no || `Batch ${i + 1}`}:</span>
+                              <span>{b.qty} units</span>
+                              {status && <span className="font-semibold">({status.label})</span>}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right space-x-2">
+                      <button onClick={() => setRestockMed(m)} className="rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
+                        + Restock
+                      </button>
+                      <button onClick={() => deleteMedicine(m.id)} className="text-xs text-slate-400 hover:text-rose-600">
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
+      </div>
+
+      {restockMed && (
+        <RestockModal medicine={restockMed} onClose={() => setRestockMed(null)} />
+      )}
+    </div>
+  )
+}
+
+function RestockModal({ medicine, onClose }) {
+  const existingBatches = medicine.batches && Array.isArray(medicine.batches) && medicine.batches.length > 0
+    ? medicine.batches
+    : [{ batch_no: 'Batch 1', qty: medicine.stock || 0, expiry_date: medicine.expiry_date || null }]
+
+  const [batchNo, setBatchNo] = useState('')
+  const [qty, setQty] = useState('')
+  const [expiryDate, setExpiryDate] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function handleRestock(e) {
+    e.preventDefault()
+    if (!qty || Number(qty) <= 0) return
+    setBusy(true)
+
+    const newBatch = {
+      batch_no: batchNo.trim() || `Batch ${existingBatches.length + 1}`,
+      qty: Number(qty),
+      expiry_date: expiryDate || null,
+    }
+
+    const updatedBatches = [...existingBatches, newBatch]
+    const updatedStock = updatedBatches.reduce((s, b) => s + Number(b.qty || 0), 0)
+
+    try {
+      await updateMedicine(medicine.id, {
+        batches: updatedBatches,
+        stock: updatedStock,
+      })
+      onClose()
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md card p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-900">Restock Medicine</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+        </div>
+        <p className="mt-1 text-sm text-slate-600 font-medium">{medicine.name}</p>
+        <p className="text-xs text-slate-400">Add a new batch with its quantity and expiry date.</p>
+
+        <form onSubmit={handleRestock} className="mt-4 space-y-4">
+          <div>
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Batch Number / Identifier</span>
+            <input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} placeholder="e.g. Batch 2 (B-102)" className="input mt-1" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Restock Qty</span>
+              <input value={qty} inputMode="numeric" onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ''))} placeholder="50" className="input mt-1" required />
+            </div>
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Expiry Date</span>
+              <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="input mt-1" />
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-slate-200 py-2.5 font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={busy} className="flex-1 rounded-xl bg-emerald-600 py-2.5 font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+              {busy ? 'Restocking…' : 'Confirm Restock'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )

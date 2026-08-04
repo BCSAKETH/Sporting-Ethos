@@ -68,6 +68,15 @@ Without it (or without the backend), charting returns a clearly-labelled sample.
 (`waiting`/`in_consult`/`done`/`left`/`no_show`/`paused`) · `priority` · `gender` · `age` ·
 `hash` (SHA-256) · `notes` (jsonb AI chart).
 
+## Mobile app
+
+[`mobile/`](./mobile) is the Android patient app (Expo + React Native + TypeScript) —
+auth, hospital/department/doctor booking, profile with medical history, and QR-based
+walk-in check-in, sharing this same Supabase project. See
+[`mobile/README.md`](./mobile/README.md). The normalized schema behind it lives in
+[`supabase/migrations/`](./supabase/migrations) at the repo root (this file,
+`supabase-schema.sql`, is the original kiosk-only schema and is left as-is for history).
+
 ## Docs
 
 Full write-ups in [`docs/`](./docs): Solution Architecture · User Flow · Implementation Plan.

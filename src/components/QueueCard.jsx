@@ -49,6 +49,11 @@ export default function QueueCard({ row, position, isNew, eta, onStatus, onPrior
                   Emergency
                 </span>
               )}
+              {row.department_name && (
+                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                  {row.department_name}
+                </span>
+              )}
             </div>
             <div className="text-xs text-slate-500">
               {row.appointment_id || 'walk-in'} · {since(row.check_in_time)}

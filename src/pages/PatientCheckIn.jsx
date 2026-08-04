@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Logo from '../components/Logo.jsx'
 import Receipt from '../components/Receipt.jsx'
-import { createCheckin, subscribe, sortQueue, isActive, STATUS } from '../lib/store.js'
+import { createCheckin, listDepartments, subscribe, sortQueue, isActive, STATUS } from '../lib/store.js'
 import { autoPrimeVoice, announce, chime } from '../lib/voice.js'
 import { LANGS, tFor, voiceFor } from '../lib/i18n.js'
 
@@ -11,6 +11,8 @@ export default function PatientCheckIn() {
   const [name, setName] = useState('')
   const [gender, setGender] = useState('')
   const [age, setAge] = useState('')
+  const [departmentId, setDepartmentId] = useState('')
+  const [departments, setDepartments] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [checkin, setCheckin] = useState(null)
@@ -22,6 +24,7 @@ export default function PatientCheckIn() {
   useEffect(() => autoPrimeVoice(), [])
   useEffect(() => localStorage.setItem('ethos_lang', lang), [lang])
   useEffect(() => localStorage.setItem('ethos_a11y', assist ? '1' : '0'), [assist])
+  useEffect(() => { listDepartments().then(setDepartments).catch(console.error) }, [])
   // Voice-guided: read the welcome aloud when assist mode is on / language changes.
   useEffect(() => {
     if (assist && !checkin) announce(`${t('welcome')}. ${t('intro')}`, voiceFor(lang))
@@ -40,7 +43,12 @@ export default function PatientCheckIn() {
     if (!name.trim()) return setError(t('enterName'))
     setBusy(true)
     try {
-      const row = await createCheckin({ name: name.trim(), gender: gender || null, age: age || null })
+      const row = await createCheckin({
+        name: name.trim(),
+        gender: gender || null,
+        age: age || null,
+        department_id: departmentId || null,
+      })
       setCheckin(row)
     } catch (err) {
       console.error(err)
@@ -104,6 +112,18 @@ export default function PatientCheckIn() {
                 </div>
               </div>
             </div>
+
+            {departments.length > 0 && (
+              <label className="block">
+                <span className="text-sm font-medium text-slate-600">Department <span className="text-slate-400 font-normal">{t('optional')}</span></span>
+                <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} className="input mt-1 w-full">
+                  <option value="">General / Unassigned</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             {error && <p className="text-sm text-red-600">{error}</p>}
 
