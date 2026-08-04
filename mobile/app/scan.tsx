@@ -154,7 +154,7 @@ export default function ScanScreen() {
               Scanned: {scannedUrl}
             </Text>
           )}
-          <Button label="Try Scanning Again" icon={RefreshCw} onPress={resetScanner} />
+          <Button label="Try Scanning Again" onPress={resetScanner} />
         </View>
       </ScreenContainer>
     );

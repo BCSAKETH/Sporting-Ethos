@@ -2,10 +2,12 @@ import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { Link, router } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { CheckCircle2, ChevronRight, ShieldCheck, UserCheck } from "lucide-react-native";
+import { Calendar as CalendarIcon, CheckCircle2, ChevronRight, ShieldCheck } from "lucide-react-native";
 
 import { Button } from "../../components/ui/Button";
 import { TextField } from "../../components/ui/TextField";
+import { VoiceTextField } from "../../components/ui/VoiceTextField";
+import { CalendarPickerModal } from "../../components/ui/CalendarPickerModal";
 import { KeyboardScreen } from "../../components/ui/KeyboardScreen";
 import Logo from "../../components/Logo";
 import { useSignUp } from "../../features/auth/useAuth";
@@ -19,13 +21,16 @@ interface OnboardingFormValues {
   password: string;
   confirmPassword: string;
 
-  // Step 2: Demographics
+  // Step 2: Demographics & Medical
   phone: string;
   gender: "male" | "female" | "other" | "";
   dateOfBirth: string;
   bloodGroup: string;
   heightCm: string;
   weightKg: string;
+  allergies: string;
+  medications: string;
+  onboardingMedications: string;
   emergencyContactName: string;
   emergencyContactPhone: string;
 
@@ -38,6 +43,7 @@ export default function SignupOnboardingScreen() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [formError, setFormError] = useState("");
   const [confirmationSent, setConfirmationSent] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const signUp = useSignUp();
 
   const {
@@ -58,6 +64,9 @@ export default function SignupOnboardingScreen() {
       bloodGroup: "O+",
       heightCm: "",
       weightKg: "",
+      allergies: "",
+      medications: "",
+      onboardingMedications: "",
       emergencyContactName: "",
       emergencyContactPhone: "",
       medicalConsent: false,
@@ -117,7 +126,7 @@ export default function SignupOnboardingScreen() {
             phone: data.phone || null,
             gender: data.gender ? (data.gender as "male" | "female" | "other") : null,
             date_of_birth: data.dateOfBirth || null,
-            blood_group: data.bloodGroup || null,
+            blood_group: data.bloodGroup ? (data.bloodGroup as "A+" | "A-" | "B+" | "B-" | "AB+" | "AB-" | "O+" | "O-") : null,
             height_cm: data.heightCm ? Number(data.heightCm) : null,
             weight_kg: data.weightKg ? Number(data.weightKg) : null,
             emergency_contact_name: data.emergencyContactName || null,
@@ -209,14 +218,14 @@ export default function SignupOnboardingScreen() {
           />
 
           {formError ? <Text className="text-sm font-medium text-red-600">{formError}</Text> : null}
-          <Button label="Continue to Demographics" icon={ChevronRight} onPress={validateStep1} />
+          <Button label="Continue to Demographics" onPress={validateStep1} />
         </View>
       )}
 
-      {/* Step 2: Demographics */}
+      {/* Step 2: Demographics & Medical Info */}
       {step === 2 && (
-        <ScrollView showsVerticalScrollIndicator={false} className="mt-4">
-          <View className="gap-3.5 pb-4">
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }} className="mt-4">
+          <View className="gap-3.5 pb-8">
             <Controller
               control={control}
               name="phone"
@@ -240,13 +249,19 @@ export default function SignupOnboardingScreen() {
               </View>
             </View>
 
-            <Controller
-              control={control}
-              name="dateOfBirth"
-              render={({ field }) => (
-                <TextField label="Date of Birth" placeholder="YYYY-MM-DD" value={field.value} onChangeText={field.onChange} />
-              )}
-            />
+            {/* Date of Birth Pop-out Calendar Picker */}
+            <View>
+              <Text className="mb-1.5 text-sm font-medium text-slate-600">Date of Birth</Text>
+              <Pressable
+                onPress={() => setShowDatePicker(true)}
+                className="flex-row items-center justify-between rounded-xl border border-slate-300 bg-white px-4 py-3.5"
+              >
+                <Text className={`text-base ${values.dateOfBirth ? "font-semibold text-slate-900" : "text-slate-400"}`}>
+                  {values.dateOfBirth ? values.dateOfBirth : "Select DOB from calendar"}
+                </Text>
+                <CalendarIcon size={20} color="#059669" />
+              </Pressable>
+            </View>
 
             <View>
               <Text className="mb-1.5 text-sm font-medium text-slate-600">Blood Group</Text>
@@ -279,6 +294,49 @@ export default function SignupOnboardingScreen() {
                 />
               </View>
             </View>
+
+            {/* Allergies with Voice/Mic */}
+            <Controller
+              control={control}
+              name="allergies"
+              render={({ field }) => (
+                <VoiceTextField
+                  label="Allergies (Tap 🎙️ for voice input)"
+                  placeholder="e.g. Penicillin, Peanuts"
+                  value={field.value}
+                  onChangeText={field.onChange}
+                />
+              )}
+            />
+
+            {/* Current Medications with Voice/Mic */}
+            <Controller
+              control={control}
+              name="medications"
+              render={({ field }) => (
+                <VoiceTextField
+                  label="Current Medications (Tap 🎙️ for voice input)"
+                  placeholder="e.g. Lisinopril 10mg"
+                  value={field.value}
+                  onChangeText={field.onChange}
+                />
+              )}
+            />
+
+            {/* Medications to be taken during onboarding */}
+            <Controller
+              control={control}
+              name="onboardingMedications"
+              render={({ field }) => (
+                <VoiceTextField
+                  label="Medications during onboarding (Tap 🎙️ for voice input)"
+                  placeholder="e.g. Paracetamol prior to triage"
+                  multiline
+                  value={field.value}
+                  onChangeText={field.onChange}
+                />
+              )}
+            />
 
             <Controller
               control={control}
@@ -355,6 +413,14 @@ export default function SignupOnboardingScreen() {
           Sign in
         </Link>
       </View>
+
+      {/* DOB Calendar Picker Modal */}
+      <CalendarPickerModal
+        visible={showDatePicker}
+        value={values.dateOfBirth}
+        onSelect={(d) => setValue("dateOfBirth", d)}
+        onClose={() => setShowDatePicker(false)}
+      />
     </KeyboardScreen>
   );
 }

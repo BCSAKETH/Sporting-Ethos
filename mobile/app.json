@@ -8,8 +8,8 @@
     "icon": "./assets/images/icon.png",
     "scheme": "sportingethos",
     "userInterfaceStyle": "light",
-    "primaryColor": "#059669",
-    "backgroundColor": "#f8fafc",
+    "primaryColor": "#8B5CF6",
+    "backgroundColor": "#FAF8F5",
     "androidStatusBar": {
       "barStyle": "dark-content",
       "backgroundColor": "#ffffff"

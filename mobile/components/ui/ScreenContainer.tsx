@@ -11,9 +11,7 @@ interface ScreenContainerProps extends PropsWithChildren {
 }
 
 /**
- * Shared screen chrome: safe-area edges + optional pull-to-refresh. Every
- * top-level tab/stack screen renders through this so Android status-bar
- * insets and refresh behavior stay consistent app-wide.
+ * Shared screen chrome: Ivory background + Lavender tint refresh control.
  */
 export function ScreenContainer({
   children,
@@ -25,19 +23,19 @@ export function ScreenContainer({
 }: ScreenContainerProps) {
   if (!scroll) {
     return (
-      <SafeAreaView edges={["top"]} className={`flex-1 bg-slate-50 ${className ?? ""}`}>
+      <SafeAreaView edges={["top"]} className={`flex-1 bg-[#FAF8F5] ${className ?? ""}`}>
         <View className={`flex-1 px-4 ${contentClassName ?? ""}`}>{children}</View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView edges={["top"]} className={`flex-1 bg-slate-50 ${className ?? ""}`}>
+    <SafeAreaView edges={["top"]} className={`flex-1 bg-[#FAF8F5] ${className ?? ""}`}>
       <ScrollView
         className="flex-1"
         contentContainerClassName={`px-4 pb-10 ${contentClassName ?? ""}`}
         refreshControl={
-          onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#059669" /> : undefined
+          onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#8B5CF6" /> : undefined
         }
       >
         {children}

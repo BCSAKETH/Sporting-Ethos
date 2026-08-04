@@ -25,17 +25,22 @@ import { calculateBmi, bmiCategory } from "../../utils/health";
 import { BLOOD_GROUPS } from "../../constants/config";
 import { useActiveMedications } from "../../features/medications/useMedications";
 
+import { CalendarPickerModal } from "../../components/ui/CalendarPickerModal";
+import { Calendar as CalendarIcon } from "lucide-react-native";
+
 export default function ProfileScreen() {
   const { profile, session } = useAuth();
   const updateProfile = useUpdateProfile();
   const signOut = useSignOut();
   const [savedMessage, setSavedMessage] = useState("");
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const {
     control,
     handleSubmit,
     watch,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
@@ -67,6 +72,7 @@ export default function ProfileScreen() {
 
   const heightCm = watch("heightCm");
   const weightKg = watch("weightKg");
+  const dateOfBirth = watch("dateOfBirth");
   const previewBmi = calculateBmi(heightCm ? Number(heightCm) : null, weightKg ? Number(weightKg) : null);
 
   const onSave = handleSubmit(async (values) => {
@@ -149,14 +155,26 @@ export default function ProfileScreen() {
             </View>
           )}
         />
-        <Controller
-          control={control}
-          name="dateOfBirth"
-          render={({ field }) => (
-            <TextField label="Date of birth" placeholder="YYYY-MM-DD" value={field.value} onChangeText={field.onChange} />
-          )}
-        />
+        <View>
+          <Text className="mb-1.5 text-sm font-medium text-slate-600">Date of Birth</Text>
+          <Pressable
+            onPress={() => setShowDatePicker(true)}
+            className="flex-row items-center justify-between rounded-xl border border-slate-300 bg-white px-4 py-3.5"
+          >
+            <Text className={`text-base ${dateOfBirth ? "font-semibold text-slate-900" : "text-slate-400"}`}>
+              {dateOfBirth ? dateOfBirth : "Select DOB from calendar"}
+            </Text>
+            <CalendarIcon size={20} color="#059669" />
+          </Pressable>
+        </View>
       </Card>
+
+      <CalendarPickerModal
+        visible={showDatePicker}
+        value={dateOfBirth}
+        onSelect={(d) => setValue("dateOfBirth", d)}
+        onClose={() => setShowDatePicker(false)}
+      />
 
       <Card className="mt-4 gap-4">
         <Text className="text-sm font-semibold uppercase tracking-wide text-slate-400">Medical Info</Text>
