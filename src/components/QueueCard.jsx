@@ -8,12 +8,12 @@ function since(iso) {
 }
 
 const DOT = {
-  [STATUS.WAITING]: 'bg-amber-500',
-  [STATUS.IN_CONSULT]: 'bg-sky-500',
-  [STATUS.DONE]: 'bg-slate-400',
-  [STATUS.LEFT]: 'bg-rose-500',
-  [STATUS.NO_SHOW]: 'bg-rose-500',
-  [STATUS.PAUSED]: 'bg-violet-500',
+  [STATUS.WAITING]: 'bg-purple-500',
+  [STATUS.IN_CONSULT]: 'bg-purple-700',
+  [STATUS.DONE]: 'bg-purple-300',
+  [STATUS.LEFT]: 'bg-purple-400',
+  [STATUS.NO_SHOW]: 'bg-purple-400',
+  [STATUS.PAUSED]: 'bg-purple-800',
 }
 const STATUS_LABEL = {
   [STATUS.WAITING]: 'Waiting',
@@ -30,33 +30,38 @@ export default function QueueCard({ row, position, isNew, eta, onStatus, onPrior
 
   return (
     <div
-      className={`rounded-xl border bg-white p-4 shadow-sm hover:shadow-md transition ${
-        emergency ? 'border-rose-300 ring-1 ring-rose-200' : 'border-slate-200'
-      } ${isNew ? 'flash-in' : ''} ${faded ? 'opacity-70' : ''}`}
+      className={`rounded-2xl border bg-white p-4.5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 ${
+        emergency ? 'border-purple-300 ring-2 ring-purple-200 bg-purple-50/20' : 'border-purple-100/80'
+      } ${isNew ? 'flash-in' : ''} ${faded ? 'opacity-75' : ''}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           {position != null && (
-            <div className="shrink-0 h-9 w-9 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 text-white flex items-center justify-center font-semibold shadow-sm">
+            <div className="shrink-0 h-9 w-9 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold shadow-md shadow-purple-600/20">
               {position}
             </div>
           )}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-slate-900 truncate">{row.name}</span>
+              <span className="font-bold text-purple-950 truncate">{row.name}</span>
               {emergency && (
-                <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700 uppercase tracking-wide">
+                <span className="shrink-0 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-800 uppercase tracking-wide">
                   Emergency
                 </span>
               )}
+              {row.department_name && (
+                <span className="shrink-0 rounded-full bg-purple-50 border border-purple-200/60 px-2 py-0.5 text-[10px] font-semibold text-purple-700">
+                  {row.department_name}
+                </span>
+              )}
             </div>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-purple-600/80 font-medium">
               {row.appointment_id || 'walk-in'} · {since(row.check_in_time)}
               {eta ? ` · ~${eta}` : ''}
             </div>
           </div>
         </div>
-        <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
+        <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700">
           <span className={`h-1.5 w-1.5 rounded-full ${DOT[row.status]}`} />
           {STATUS_LABEL[row.status]}
         </span>
@@ -95,14 +100,14 @@ export default function QueueCard({ row, position, isNew, eta, onStatus, onPrior
 
 function Btn({ tone = 'default', onClick, children }) {
   const tones = {
-    primary: 'bg-emerald-600 text-white hover:bg-emerald-700 border-emerald-600',
-    danger: 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50',
-    default: 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50',
+    primary: 'bg-purple-600 text-white hover:bg-purple-700 border-purple-600 shadow-sm shadow-purple-600/20 active:scale-95',
+    danger: 'bg-purple-100 text-purple-900 border-purple-300 hover:bg-purple-200 active:scale-95',
+    default: 'bg-white text-purple-900 border-purple-200/80 hover:bg-purple-50 active:scale-95',
   }
   return (
     <button
       onClick={onClick}
-      className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${tones[tone]}`}
+      className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${tones[tone]}`}
     >
       {children}
     </button>

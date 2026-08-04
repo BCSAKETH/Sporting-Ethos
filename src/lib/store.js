@@ -133,7 +133,80 @@ export function bookingType(row) {
   return row.source === 'reception' ? 'Walk-in' : 'Pre-booked'
 }
 
-export async function createCheckin({ name, priority = 'normal', gender = null, age = null, source = 'self' }) {
+const MOCK_DEPARTMENTS = [
+  { id: 'dept-genmed', name: 'General Medicine', department_type: 'clinical' },
+  { id: 'dept-cardio', name: 'Cardiology', department_type: 'clinical' },
+  { id: 'dept-ortho', name: 'Orthopedics', department_type: 'clinical' },
+  { id: 'dept-peds', name: 'Pediatrics', department_type: 'clinical' },
+  { id: 'dept-neuro', name: 'Neurology', department_type: 'clinical' },
+  { id: 'dept-derma', name: 'Dermatology', department_type: 'clinical' },
+]
+
+const MOCK_DOCTORS_BY_CODE = {
+  // Access Code -> Doctor Profile / Triage Role
+  'nurse': { id: 'nurse-er', full_name: 'ER Nurse Station', is_nurse: true, department_id: null, departments: { name: 'ER Triage & Nursing' } },
+  'er-nurse': { id: 'nurse-er', full_name: 'ER Nurse Station', is_nurse: true, department_id: null, departments: { name: 'ER Triage & Nursing' } },
+  '201': { id: 'nurse-er', full_name: 'ER Nurse Station', is_nurse: true, department_id: null, departments: { name: 'ER Triage & Nursing' } },
+
+  '101': { id: 'doc-101', full_name: 'Dr. Aarav Sharma', department_id: 'dept-genmed', departments: { name: 'General Medicine' } },
+  'doc-genmed': { id: 'doc-101', full_name: 'Dr. Aarav Sharma', department_id: 'dept-genmed', departments: { name: 'General Medicine' } },
+
+  '102': { id: 'doc-102', full_name: 'Dr. Rohan Mehta', department_id: 'dept-cardio', departments: { name: 'Cardiology' } },
+  'doc-cardio': { id: 'doc-102', full_name: 'Dr. Rohan Mehta', department_id: 'dept-cardio', departments: { name: 'Cardiology' } },
+
+  '103': { id: 'doc-103', full_name: 'Dr. Vikram Singh', department_id: 'dept-ortho', departments: { name: 'Orthopedics' } },
+  'doc-ortho': { id: 'doc-103', full_name: 'Dr. Vikram Singh', department_id: 'dept-ortho', departments: { name: 'Orthopedics' } },
+
+  '104': { id: 'doc-104', full_name: 'Dr. Priya Nair', department_id: 'dept-peds', departments: { name: 'Pediatrics' } },
+  'doc-peds': { id: 'doc-104', full_name: 'Dr. Priya Nair', department_id: 'dept-peds', departments: { name: 'Pediatrics' } },
+
+  '105': { id: 'doc-105', full_name: 'Dr. Ishaan Verma', department_id: 'dept-neuro', departments: { name: 'Neurology' } },
+  'doc-neuro': { id: 'doc-105', full_name: 'Dr. Ishaan Verma', department_id: 'dept-neuro', departments: { name: 'Neurology' } },
+
+  '106': { id: 'doc-106', full_name: 'Dr. Sanjay Gupta', department_id: 'dept-derma', departments: { name: 'Dermatology' } },
+  'doc-derma': { id: 'doc-106', full_name: 'Dr. Sanjay Gupta', department_id: 'dept-derma', departments: { name: 'Dermatology' } },
+
+  'ethos': { id: 'doc-chief', full_name: 'Chief Medical Officer', department_id: null, departments: { name: 'All Departments' } },
+}
+
+export async function listDepartments() {
+  if (backendMode === 'supabase') {
+    const { data, error } = await supabase
+      .from('departments')
+      .select('id, name, department_type')
+      .eq('is_active', true)
+      .order('name')
+    if (error) throw error
+    return data && data.length ? data : MOCK_DEPARTMENTS
+  }
+  return MOCK_DEPARTMENTS
+}
+
+// Look up a doctor by their unique individual access code.
+export async function findDoctorByCode(code) {
+  if (!code) return null
+  const inputCode = code.trim().toLowerCase()
+
+  if (backendMode === 'supabase') {
+    const { data, error } = await supabase
+      .from('doctors')
+      .select('id, full_name, department_id, departments(name)')
+      .eq('access_code', code.trim())
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (!error && data) return data
+  }
+
+  // Check predefined doctor access codes dictionary
+  if (MOCK_DOCTORS_BY_CODE[inputCode]) {
+    return MOCK_DOCTORS_BY_CODE[inputCode]
+  }
+
+  return null
+}
+
+export async function createCheckin({ name, priority = 'normal', gender = null, age = null, source = 'self', department_id = null }) {
   const id = newId()
   const check_in_time = nowIso()
   const appointment_id = await nextApptId() // always auto + sequential
@@ -148,6 +221,7 @@ export async function createCheckin({ name, priority = 'normal', gender = null, 
     gender: gender || null,
     age: age != null && age !== '' ? Number(age) : null,
     source,
+    department_id: department_id || null,
     hash,
   }
 

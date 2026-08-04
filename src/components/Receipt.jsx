@@ -11,16 +11,16 @@ function formatTime(iso) {
   }
 }
 
-// Branded digital receipt — proof of check-in with a tamper-evident hash.
+// Digital receipt — proof of check-in with Ivory & Lavender theme.
 export default function Receipt({ checkin, position, eta }) {
   if (!checkin) return null
   return (
-    <div className="rounded-2xl border border-emerald-100 bg-white shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-emerald-100 bg-ethos-mist">
+    <div className="rounded-2xl border border-purple-100/70 bg-white shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-purple-100/70 bg-purple-50/60">
         <Logo />
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-ethos-deep">
+        <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 border border-purple-200 px-3 py-1 text-xs font-bold text-purple-900">
           <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path d="M4 10l4 4 8-9" stroke="#065f46" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M4 10l4 4 8-9" stroke="#5B21B6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           Verified
         </span>
@@ -34,14 +34,14 @@ export default function Receipt({ checkin, position, eta }) {
           <Row label="Queue position" value={`#${position}`} strong />
         )}
         {eta && <Row label="Estimated wait" value={eta} />}
-        <Row label="Reference (UUID)" value={<code className="text-xs break-all">{checkin.id}</code>} />
+        <Row label="Reference (UUID)" value={<code className="text-xs break-all font-mono text-purple-600">{checkin.id}</code>} />
         <Row
           label="Verification hash"
-          value={<code className="text-xs break-all text-emerald-700">{checkin.hash}</code>}
+          value={<code className="text-xs break-all font-mono text-purple-700 font-bold">{checkin.hash}</code>}
         />
       </dl>
 
-      <div className="px-5 py-3 border-t border-emerald-100 bg-slate-50 text-[11px] text-slate-500">
+      <div className="px-5 py-3 border-t border-purple-100/60 bg-[#FAF8F5] text-[11px] text-purple-500 font-semibold">
         SHA-256 verified · Keep this reference as proof of arrival.
       </div>
     </div>
@@ -51,8 +51,8 @@ export default function Receipt({ checkin, position, eta }) {
 function Row({ label, value, strong }) {
   return (
     <div className="flex items-start justify-between gap-4">
-      <dt className="text-slate-500 shrink-0">{label}</dt>
-      <dd className={`text-right ${strong ? 'font-semibold text-ethos-ink' : 'text-slate-700'}`}>
+      <dt className="text-purple-600/80 font-medium shrink-0">{label}</dt>
+      <dd className={`text-right ${strong ? 'font-bold text-purple-950' : 'text-purple-900 font-medium'}`}>
         {value}
       </dd>
     </div>

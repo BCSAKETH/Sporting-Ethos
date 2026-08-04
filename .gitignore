@@ -1,7 +1,14 @@
+node_modules/
+dist/
 .env
+.env.local
 .venv
 __pycache__/
 *.pyc
-
+*.apk
+*.log
+.DS_Store
+.vite
 .vercel
-node_modules
+backend/
+
