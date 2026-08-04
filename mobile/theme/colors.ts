@@ -1,52 +1,58 @@
-// Single source of truth for brand colors — mirrored in tailwind.config.js
-// `theme.extend.colors.primary` so NativeWind classes (bg-primary-600, ...)
-// and plain style objects (native Reanimated values, chart colors, etc.)
-// always agree. Emerald matches the existing Sporting Ethos web app.
+// Single source of truth for brand colors — Minimal Ivory & Lavender palette.
 export const primary = {
-  50: "#ecfdf5",
-  100: "#d1fae5",
-  200: "#a7f3d0",
-  300: "#6ee7b7",
-  400: "#34d399",
-  500: "#10b981",
-  600: "#059669",
-  700: "#047857",
-  800: "#065f46",
-  900: "#064e3b",
+  50: "#FAF5FF",
+  100: "#F3E8FF",
+  200: "#E9D5FF",
+  300: "#D8B4FE",
+  400: "#C084FC",
+  500: "#A855F7",
+  600: "#8B5CF6",
+  700: "#7C3AED",
+  800: "#6D28D9",
+  900: "#5B21B6",
+} as const;
+
+export const ivory = {
+  50: "#FAF8F5",
+  100: "#F5F0E8",
+  200: "#EAE2D5",
+  300: "#DDD3C1",
+  800: "#332E27",
+  900: "#231F19",
 } as const;
 
 export const neutral = {
-  50: "#f8fafc",
-  100: "#f1f5f9",
-  200: "#e2e8f0",
-  300: "#cbd5e1",
-  400: "#94a3b8",
-  500: "#64748b",
-  600: "#475569",
-  700: "#334155",
-  800: "#1e293b",
-  900: "#0f172a",
+  50: "#FAF8F5",
+  100: "#F5F0E8",
+  200: "#EAE2D5",
+  300: "#DDD3C1",
+  400: "#A78BFA",
+  500: "#8B5CF6",
+  600: "#7C3AED",
+  700: "#5B21B6",
+  800: "#3B1C66",
+  900: "#2E1C40",
 } as const;
 
 export const semantic = {
-  success: "#16a34a",
-  warning: "#d97706",
-  danger: "#dc2626",
-  info: "#0284c7",
+  success: "#8B5CF6",
+  warning: "#A855F7",
+  danger: "#5B21B6",
+  info: "#7C3AED",
 } as const;
 
 export const priorityColors: Record<"normal" | "urgent" | "emergency", string> = {
-  normal: neutral[500],
-  urgent: semantic.warning,
-  emergency: semantic.danger,
+  normal: "#8B5CF6",
+  urgent: "#7C3AED",
+  emergency: "#5B21B6",
 };
 
 export const statusColors: Record<string, string> = {
-  requested: neutral[500],
-  confirmed: semantic.info,
-  checked_in: primary[600],
-  in_consult: primary[700],
-  completed: semantic.success,
-  cancelled: neutral[400],
-  no_show: semantic.danger,
+  requested: "#A78BFA",
+  confirmed: "#7C3AED",
+  checked_in: "#8B5CF6",
+  in_consult: "#5B21B6",
+  completed: "#6D28D9",
+  cancelled: "#C084FC",
+  no_show: "#3B1C66",
 };

@@ -23,7 +23,7 @@ const AVG_MINUTES = 8
 
 export default function Dashboard() {
   const [rows, setRows] = useState([])
-  const [tab, setTab] = useState('queue') // 'queue' | 'settings'
+  const [tab, setTab] = useState('queue') // 'queue' | 'reports' | 'settings'
   const [lastLatency, setLastLatency] = useState(null)
   const [flashIds, setFlashIds] = useState(new Set())
   const [, forceTick] = useState(0)
@@ -114,7 +114,6 @@ export default function Dashboard() {
     setLastLatency(null)
   }
 
-  // Wrap status changes so calling the next patient is audible on this screen too.
   function changeStatus(id, status) {
     if (status === STATUS.IN_CONSULT) {
       const r = rows.find((x) => x.id === id)
@@ -141,16 +140,16 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-full">
+    <div className="min-h-full bg-[#FAF8F5]">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200">
+      <header className="bg-[#FAF8F5] border-b border-purple-200/60 sticky top-0 z-40 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Logo />
             <LiveBadge />
           </div>
 
-          <nav className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+          <nav className="flex items-center gap-1 rounded-xl bg-purple-100/70 p-1 border border-purple-200/40">
             <TabBtn active={tab === 'queue'} onClick={() => setTab('queue')}>
               Live Queue
             </TabBtn>
@@ -165,31 +164,31 @@ export default function Dashboard() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowAdd(true)}
-              className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              className="rounded-xl bg-purple-600 px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-purple-600/20 hover:bg-purple-700 active:scale-95 transition-all duration-150"
             >
               ＋ Add patient
             </button>
             <button
               onClick={callExpert}
-              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              className="rounded-xl bg-purple-950 px-3.5 py-2 text-sm font-semibold text-white shadow-md hover:bg-purple-900 active:scale-95 transition-all duration-150"
             >
               🔔 Call expert
             </button>
             <Link
               to="/expert"
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50"
+              className="rounded-xl border border-purple-200/80 bg-white px-3 py-2 text-sm font-medium text-purple-900 hover:bg-purple-50 transition-all duration-150"
             >
               Expert
             </Link>
             <Link
               to="/pharmacy"
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50"
+              className="rounded-xl border border-purple-200/80 bg-white px-3 py-2 text-sm font-medium text-purple-900 hover:bg-purple-50 transition-all duration-150"
             >
               Pharmacy
             </Link>
             <button
               onClick={handleReset}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50"
+              className="rounded-xl border border-purple-200/80 bg-white px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50 transition-all duration-150"
             >
               Reset
             </button>
@@ -198,7 +197,7 @@ export default function Dashboard() {
       </header>
 
       {ring && (
-        <div className="bg-amber-500 text-white ring-blink shadow-lg">
+        <div className="bg-purple-700 text-white ring-blink shadow-lg">
           <div className="max-w-6xl mx-auto px-5 py-3 flex items-center justify-between">
             <span className="font-semibold text-lg">
               <span className="bell-shake mr-1">🔔</span>
@@ -209,8 +208,8 @@ export default function Dashboard() {
         </div>
       )}
       {sent && (
-        <div className="bg-emerald-600 text-white">
-          <div className="max-w-6xl mx-auto px-5 py-2 text-sm">✓ The expert has been notified.</div>
+        <div className="bg-purple-600 text-white">
+          <div className="max-w-6xl mx-auto px-5 py-2 text-sm font-medium">✓ The expert has been notified.</div>
         </div>
       )}
 
@@ -219,8 +218,8 @@ export default function Dashboard() {
           <div className="fade-up">
             <div className="mb-4 flex items-end justify-between">
               <div>
-                <h1 className="text-lg font-semibold text-slate-900">Live Queue</h1>
-                <p className="text-sm text-slate-400">
+                <h1 className="text-xl font-bold text-purple-950">Live Queue</h1>
+                <p className="text-xs font-medium text-purple-700/80">
                   {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
                 </p>
               </div>
@@ -265,9 +264,9 @@ export default function Dashboard() {
                     </div>
                   )}
                   {inConsult.length > 0 && (
-                    <p className="mt-2 text-[11px] text-slate-400">
+                    <p className="mt-2 text-[11px] text-purple-600">
                       Consultation recording &amp; charting happens in the{' '}
-                      <a href="/expert" className="text-emerald-600 hover:underline">Expert Console</a>.
+                      <a href="/expert" className="text-purple-700 font-semibold hover:underline">Expert Console</a>.
                     </p>
                   )}
                 </section>
@@ -342,21 +341,21 @@ function AddPatientModal({ onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md card p-6" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-purple-950/40 backdrop-blur-sm p-4 animate-fade-in" onClick={onClose}>
+      <div className="w-full max-w-md card p-6 bg-[#FAF8F5] border border-purple-200/70 shadow-2xl animate-pop" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Add patient (walk-in)</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+          <h2 className="text-lg font-bold text-purple-950">Add patient (walk-in)</h2>
+          <button onClick={onClose} className="text-purple-400 hover:text-purple-700 text-xl font-bold leading-none">×</button>
         </div>
-        <p className="mt-1 text-sm text-slate-500">Register a patient at the desk. A sequential appointment ID is assigned automatically.</p>
+        <p className="mt-1 text-sm text-purple-700/80">Register a patient at the desk. A sequential appointment ID is assigned automatically.</p>
         <form onSubmit={submit} className="mt-4 space-y-4">
-          <input autoFocus value={name} onChange={(e) => { setName(e.target.value); setErr('') }} placeholder="Full name" className="input" />
+          <input autoFocus value={name} onChange={(e) => { setName(e.target.value); setErr('') }} placeholder="Full name" className="input bg-white" />
           <div className="grid grid-cols-2 gap-3">
-            <input value={age} inputMode="numeric" onChange={(e) => setAge(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))} placeholder="Age" className="input" />
+            <input value={age} inputMode="numeric" onChange={(e) => setAge(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))} placeholder="Age" className="input bg-white" />
             <div className="grid grid-cols-3 gap-1.5">
               {['Male', 'Female', 'Other'].map((g) => (
                 <button key={g} type="button" onClick={() => setGender(gender === g ? '' : g)}
-                  className={`rounded-xl border px-1 py-3 text-sm font-medium ${gender === g ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+                  className={`rounded-xl border px-1 py-3 text-sm font-semibold transition ${gender === g ? 'border-purple-500 bg-purple-100 text-purple-900 shadow-sm' : 'border-purple-200/80 bg-white text-purple-800 hover:bg-purple-50'}`}>
                   {g[0]}
                 </button>
               ))}
@@ -365,11 +364,11 @@ function AddPatientModal({ onClose }) {
 
           {departments.length > 0 && (
             <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Department</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-purple-500">Department</span>
               <select
                 value={departmentId}
                 onChange={(e) => setDepartmentId(e.target.value)}
-                className="input mt-1 w-full"
+                className="input mt-1 w-full bg-white"
               >
                 <option value="">General / Unassigned</option>
                 {departments.map((d) => (
@@ -379,10 +378,10 @@ function AddPatientModal({ onClose }) {
             </div>
           )}
 
-          {err && <p className="text-sm text-red-600">{err}</p>}
-          <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-slate-200 py-3 font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
-            <button type="submit" disabled={busy} className="flex-1 rounded-xl bg-emerald-600 py-3 font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+          {err && <p className="text-sm text-purple-600 font-medium">{err}</p>}
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-purple-200/80 py-3 font-semibold text-purple-800 hover:bg-purple-50 transition">Cancel</button>
+            <button type="submit" disabled={busy} className="flex-1 rounded-xl bg-purple-600 py-3 font-semibold text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 disabled:opacity-60 transition">
               {busy ? 'Adding…' : 'Add patient'}
             </button>
           </div>
@@ -418,48 +417,48 @@ function SettingsTab() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <div className="card p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Universal check-in QR</h2>
-        <p className="mt-1 text-sm text-slate-500">
+      <div className="card p-6 bg-white border border-purple-100/70 shadow-sm">
+        <h2 className="text-lg font-bold text-purple-950">Universal check-in QR</h2>
+        <p className="mt-1 text-sm text-purple-700/80">
           Download this and print it (or show it on a screen) at your reception. Every patient
           scans the same code to check in.
         </p>
 
         <div className="mt-5 flex flex-col items-center">
-          <div className="rounded-2xl border border-slate-200 p-4 shadow-sm bg-white">
+          <div className="rounded-2xl border border-purple-200/80 p-4 shadow-sm bg-[#FAF8F5]">
             <QRCodeCanvas value={checkinUrl} size={200} includeMargin level="M" />
           </div>
           <div style={{ display: 'none' }}>
             <QRCodeCanvas id="qr-hires" value={checkinUrl} size={1024} includeMargin level="M" />
           </div>
-          <code className="mt-3 text-xs text-slate-400 break-all text-center">{checkinUrl}</code>
+          <code className="mt-3 text-xs text-purple-500 break-all text-center font-mono">{checkinUrl}</code>
           <div className="mt-4 flex w-full gap-2">
-            <button onClick={downloadQR} className="flex-1 rounded-lg bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700">
+            <button onClick={downloadQR} className="flex-1 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 transition">
               Download QR (PNG)
             </button>
-            <button onClick={copyUrl} className="rounded-lg border border-slate-200 px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
+            <button onClick={copyUrl} className="rounded-xl border border-purple-200/80 px-4 py-3 text-sm font-semibold text-purple-800 hover:bg-purple-50 transition">
               {copied ? '✓ Copied' : 'Copy link'}
             </button>
           </div>
         </div>
       </div>
 
-      <div className="card p-6">
-        <h2 className="text-lg font-semibold text-slate-900">How to use it</h2>
-        <ol className="mt-3 space-y-3 text-sm text-slate-600">
+      <div className="card p-6 bg-white border border-purple-100/70 shadow-sm">
+        <h2 className="text-lg font-bold text-purple-950">How to use it</h2>
+        <ol className="mt-3 space-y-3 text-sm text-purple-800">
           <Step n="1">Place the QR where patients arrive — a printed poster, tablet, or reception screen.</Step>
           <Step n="2">A patient scans it, enters their name (+ appointment ID if they have one), and taps check in.</Step>
           <Step n="3">They appear on the live queue instantly — with a highlight, a chime, and a voice announcement.</Step>
         </ol>
 
         {isLocalhost ? (
-          <div className="mt-5 rounded-lg bg-amber-50 border border-amber-200 p-4 text-amber-800 text-sm">
+          <div className="mt-5 rounded-xl bg-purple-50 border border-purple-200/80 p-4 text-purple-900 text-sm">
             <b>Heads up:</b> you're viewing this at <code>localhost</code>, so the QR points to
             localhost and won't open on a phone. Open this dashboard using your computer's network
             address (e.g. <code>http://192.168.x.x:5173</code>) and download the QR again.
           </div>
         ) : (
-          <div className="mt-5 rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-emerald-800 text-sm">
+          <div className="mt-5 rounded-xl bg-purple-50 border border-purple-200/80 p-4 text-purple-900 text-sm">
             This QR points to <code>{checkinUrl}</code> — phones on the same Wi-Fi can scan it.
           </div>
         )}
@@ -475,8 +474,8 @@ function TabBtn({ active, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
-        active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+      className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all duration-150 ${
+        active ? 'bg-purple-600 text-white shadow-sm font-semibold' : 'text-purple-800 hover:text-purple-950 hover:bg-purple-200/40'
       }`}
     >
       {children}
@@ -487,8 +486,8 @@ function TabBtn({ active, onClick, children }) {
 function LiveBadge() {
   const supa = backendMode === 'supabase'
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-      <span className={`h-1.5 w-1.5 rounded-full ${supa ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-50 border border-purple-200/70 px-2.5 py-1 text-xs font-semibold text-purple-800">
+      <span className={`h-1.5 w-1.5 rounded-full ${supa ? 'bg-purple-600 animate-pulse' : 'bg-purple-400'}`} />
       {supa ? 'Live' : 'Local demo'}
     </span>
   )
@@ -496,16 +495,16 @@ function LiveBadge() {
 
 function SectionTitle({ children }) {
   return (
-    <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">{children}</h2>
+    <h2 className="text-xs font-bold uppercase tracking-wider text-purple-500 mb-3">{children}</h2>
   )
 }
 function Muted({ children }) {
-  return <p className="text-sm text-slate-400">{children}</p>
+  return <p className="text-sm text-purple-400">{children}</p>
 }
 function Step({ n, children }) {
   return (
     <li className="flex gap-3">
-      <span className="shrink-0 h-6 w-6 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold flex items-center justify-center">
+      <span className="shrink-0 h-6 w-6 rounded-full bg-purple-100 text-purple-800 text-xs font-bold flex items-center justify-center">
         {n}
       </span>
       <span>{children}</span>
@@ -515,9 +514,9 @@ function Step({ n, children }) {
 
 function EmptyState() {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center">
-      <p className="font-medium text-slate-600">The waiting room is empty</p>
-      <p className="mt-1 text-sm text-slate-400">
+    <div className="rounded-2xl border border-dashed border-purple-200 bg-white p-10 text-center shadow-sm">
+      <p className="font-semibold text-purple-950">The waiting room is empty</p>
+      <p className="mt-1 text-sm text-purple-500">
         New check-ins appear here instantly — with a highlight, a chime, and a voice announcement.
       </p>
     </div>

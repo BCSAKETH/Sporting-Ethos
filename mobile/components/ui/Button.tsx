@@ -10,17 +10,17 @@ interface ButtonProps extends Omit<PressableProps, "children"> {
 }
 
 const VARIANT_CLASSES: Record<Variant, string> = {
-  primary: "bg-primary-600 active:bg-primary-700",
-  secondary: "bg-white border border-slate-300 active:bg-slate-50",
-  ghost: "bg-transparent active:bg-slate-100",
-  danger: "bg-red-600 active:bg-red-700",
+  primary: "bg-primary-600 active:bg-primary-700 shadow-md",
+  secondary: "bg-white border border-purple-200 active:bg-purple-50",
+  ghost: "bg-transparent active:bg-purple-100/60",
+  danger: "bg-purple-950 active:bg-purple-900",
 };
 
 const VARIANT_TEXT_CLASSES: Record<Variant, string> = {
-  primary: "text-white",
-  secondary: "text-slate-700",
-  ghost: "text-primary-700",
-  danger: "text-white",
+  primary: "text-white font-bold",
+  secondary: "text-purple-900 font-bold",
+  ghost: "text-primary-700 font-bold",
+  danger: "text-white font-bold",
 };
 
 export function Button({
@@ -43,7 +43,7 @@ export function Button({
       {...props}
     >
       {loading ? (
-        <ActivityIndicator color={variant === "primary" || variant === "danger" ? "#fff" : "#059669"} />
+        <ActivityIndicator color={variant === "primary" || variant === "danger" ? "#fff" : "#8B5CF6"} />
       ) : (
         <Text className={`text-base font-semibold ${VARIANT_TEXT_CLASSES[variant]}`}>{label}</Text>
       )}
