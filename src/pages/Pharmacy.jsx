@@ -101,6 +101,36 @@ function firstWord(s) {
   return String(s).trim().split(/\s+/)[0].toLowerCase()
 }
 
+// Words that describe HOW to take a medicine (dosage / frequency / route), not
+// the medicine itself. A prescription line made up entirely of these (e.g.
+// "3 times daily", "after meals") is an instruction, never a billable item.
+const INSTRUCTION_WORDS = new Set([
+  'take', 'apply', 'use', 'tab', 'tablet', 'tablets', 'capsule', 'capsules', 'cap', 'caps',
+  'once', 'twice', 'thrice', 'time', 'times', 'daily', 'day', 'days', 'week', 'weekly',
+  'morning', 'afternoon', 'evening', 'night', 'noon', 'bedtime', 'hourly', 'hour', 'hours',
+  'after', 'before', 'with', 'without', 'food', 'meal', 'meals', 'water', 'milk',
+  'for', 'as', 'needed', 'required', 'sos', 'prn', 'bd', 'od', 'tds', 'tid', 'qid', 'hs', 'stat',
+  'topical', 'topically', 'orally', 'oral', 'external', 'apply', 'and', 'a', 'per', 'x',
+  'ml', 'mg', 'drops', 'drop', 'spoon', 'teaspoon', 'sachet', 'dose', 'doses', 'course',
+])
+
+// True when EVERY token in the line is an instruction word or a number → the
+// line is dosage/frequency guidance, not a medicine to dispense.
+function isInstructionLine(line) {
+  const words = String(line).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean)
+  if (!words.length) return true
+  return words.every((w) => INSTRUCTION_WORDS.has(w) || /^\d+$/.test(w))
+}
+
+// Match a free-text prescription line to an inventory medicine (for pricing).
+function matchMedicine(line, meds) {
+  const l = String(line).toLowerCase()
+  return meds.find((m) => {
+    const token = firstWord(m.name)
+    return token.length >= 3 && l.includes(token)
+  }) || null
+}
+
 function Counter({ meds, pendingList }) {
   const [appt, setAppt] = useState('')
   const [patient, setPatient] = useState(null)
@@ -124,11 +154,32 @@ function Counter({ meds, pendingList }) {
 
     const matched = []
     ;(p.notes?.prescriptions || []).forEach((presc) => {
-      const med = meds.find((m) => presc.toLowerCase().includes(firstWord(m.name)))
-      if (med && !matched.some((o) => o.medicine_id === med.id)) {
-        matched.push({ medicine_id: med.id, name: med.name, price: Number(med.price), qty: 1 })
-      } else if (!med) {
-        matched.push({ medicine_id: null, name: presc, price: 0, qty: 1 })
+      // Prescriptions may be plain strings or structured {name,dosage,frequency}.
+      const line =
+        typeof presc === 'string'
+          ? presc
+          : [presc?.name, presc?.dosage, presc?.frequency].filter(Boolean).join(' ')
+      if (!line.trim()) return
+
+      // A pure dosage/frequency line ("3 times daily") is guidance — attach it
+      // to the medicine above it, never bill it as its own item.
+      if (isInstructionLine(line)) {
+        if (matched.length) {
+          const prev = matched[matched.length - 1]
+          prev.instruction = prev.instruction ? `${prev.instruction}, ${line.trim()}` : line.trim()
+        }
+        return
+      }
+
+      const med = matchMedicine(line, meds)
+      if (med) {
+        if (!matched.some((o) => o.medicine_id === med.id)) {
+          matched.push({ medicine_id: med.id, name: med.name, price: Number(med.price) || 0, qty: 1, prescribed_as: line.trim() })
+        }
+      } else {
+        // Prescribed but not in this pharmacy's inventory — surface it so the
+        // pharmacist can substitute/add it, don't silently bill ₹0.
+        matched.push({ medicine_id: null, name: line.trim(), price: 0, qty: 1, notInStock: true })
       }
     })
     setOrder(matched)
@@ -165,7 +216,7 @@ function Counter({ meds, pendingList }) {
     try {
       const bill = {
         bill_no: makeBillNo(),
-        items: order.map(({ name, price, qty }) => ({ name, price, qty })),
+        items: order.map(({ name, price, qty, instruction }) => ({ name, price, qty, instruction: instruction || null })),
         total,
         paid: true,
         paid_at: new Date().toISOString(),
@@ -337,10 +388,20 @@ function Counter({ meds, pendingList }) {
                       {order.map((it, i) => (
                         <li key={i} className="flex items-center gap-2 py-2">
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-slate-800 truncate">
+                            <div className="text-xs font-bold text-slate-800 truncate flex items-center gap-1.5">
                               {it.name}
+                              {it.notInStock && (
+                                <span className="rounded bg-amber-100 text-amber-800 border border-amber-200 px-1 py-0.5 text-[9px] font-bold uppercase shrink-0">
+                                  Not in stock
+                                </span>
+                              )}
                             </div>
-                            <div className="text-[10px] text-slate-500">{rupees(it.price)} each</div>
+                            {it.instruction && (
+                              <div className="text-[10px] font-medium text-emerald-700 truncate">↳ {it.instruction}</div>
+                            )}
+                            <div className="text-[10px] text-slate-500">
+                              {it.notInStock ? 'Substitute or set price →' : `${rupees(it.price)} each`}
+                            </div>
                           </div>
                           <div className="flex items-center gap-1">
                             <button

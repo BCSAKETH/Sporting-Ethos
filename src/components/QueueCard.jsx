@@ -28,7 +28,7 @@ const STATUS_LABEL = {
   [STATUS.PAUSED]: 'Paused',
 }
 
-export default function QueueCard({ row, position, isNew, eta, onStatus, onPriority, onForward, isCalled }) {
+export default function QueueCard({ row, position, isNew, eta, onStatus, onPriority, onForward, onCall, isCalled }) {
   const emergency = row.priority === 'emergency'
   const faded = row.status === STATUS.DONE || row.status === STATUS.LEFT || row.status === STATUS.NO_SHOW
   const isWaiting = row.status === STATUS.WAITING || row.status === STATUS.WAITING_RECEPTION || row.status === STATUS.WAITING_DEPARTMENT || row.status === STATUS.PAUSED
@@ -75,8 +75,8 @@ export default function QueueCard({ row, position, isNew, eta, onStatus, onPrior
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {isWaiting && (
           <>
-            <Btn tone="primary" onClick={() => onStatus(row.id, STATUS.IN_CONSULT)}>
-              Call next
+            <Btn tone="primary" onClick={() => onCall(row)}>
+              📣 Call to counter
             </Btn>
 
             {onForward && (

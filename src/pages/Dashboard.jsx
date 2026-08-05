@@ -122,7 +122,10 @@ export default function Dashboard() {
     setCalledIds((prev) => new Set(prev).add(first.id))
     chime()
     announce(`Patient ${first.name}, please proceed to Reception Counter 1`)
-    updateStatus(first.id, STATUS.IN_CONSULT)
+    // Reception's job is to route the patient to the RIGHT department queue —
+    // not to start the consultation. Open the department-assignment step; the
+    // doctor calls them into consultation from their department queue.
+    setForwardPatient(first)
   }
 
   function changeStatus(id, status) {
