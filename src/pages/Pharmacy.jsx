@@ -55,6 +55,9 @@ function Console({ pharmacist, onLogout }) {
             <Tab active={tab === 'inventory'} onClick={() => setTab('inventory')}>
               Inventory &amp; Batches ({meds.length})
             </Tab>
+            <Tab active={tab === 'lab'} onClick={() => setTab('lab')}>
+              Diagnostics Lab
+            </Tab>
           </nav>
 
           <div className="flex items-center gap-3">
@@ -80,6 +83,8 @@ function Console({ pharmacist, onLogout }) {
       <main className="max-w-6xl mx-auto px-5 py-6">
         {tab === 'counter' ? (
           <Counter meds={meds} pendingList={pendingPrescriptions} />
+        ) : tab === 'lab' ? (
+          <LabConsole />
         ) : (
           <Inventory meds={meds} />
         )}
