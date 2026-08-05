@@ -269,14 +269,14 @@ function StaffModal({ staffMember, departments, onClose, onSaved }) {
   async function submit(e) {
     e.preventDefault()
     if (!name.trim()) return setErr('Full name is required.')
-    if (!accessCode.trim() || accessCode.length < 4) return setErr('Enter a valid 4-digit PIN access code.')
+    if (!accessCode.trim() || accessCode.length < 2) return setErr('Enter a valid access code.')
     setBusy(true)
 
     try {
       const payload = {
         name: name.trim(),
         role,
-        access_code: accessCode.trim(),
+        access_code: accessCode.trim().toUpperCase(),
         department_id: role === 'doctor' && departmentId ? departmentId : null,
       }
 
@@ -342,13 +342,13 @@ function StaffModal({ staffMember, departments, onClose, onSaved }) {
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">4-Digit Access Code (PIN)</label>
+            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Access Code (Alphanumeric / PIN)</label>
             <input
               value={accessCode}
-              maxLength={6}
-              onChange={(e) => setAccessCode(e.target.value.replace(/[^0-9]/g, ''))}
-              placeholder="e.g. 4321"
-              className="input w-full font-mono text-lg font-bold"
+              maxLength={16}
+              onChange={(e) => setAccessCode(e.target.value.toUpperCase())}
+              placeholder="e.g. 4321 or DOC-101"
+              className="input w-full font-mono text-lg font-bold uppercase"
             />
           </div>
 
