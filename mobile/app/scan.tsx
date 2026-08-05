@@ -1,8 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View, ScrollView } from "react-native";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
-import { CheckCircle2, QrCode, RefreshCw } from "lucide-react-native";
+import { CheckCircle2, QrCode, RefreshCw, HelpCircle } from "lucide-react-native";
+import { useQuery } from "@tanstack/react-query";
 
 import { ScreenContainer } from "../components/ui/ScreenContainer";
 import { Card } from "../components/ui/Card";
@@ -11,6 +12,8 @@ import { usePrimaryHospital } from "../features/hospitals/useHospitals";
 import { useAuth } from "../features/auth/useAuth";
 import { useHospitalQueue, useSpotCheckIn, queuePosition } from "../features/qr-checkin/useCheckin";
 import { isCheckinQrValue } from "../utils/qr";
+import { queryKeys } from "../constants/queryKeys";
+import { listDepartments } from "../services/departments.service";
 
 type Stage = "scanning" | "confirming" | "success" | "not-found";
 
@@ -30,6 +33,9 @@ export default function ScanScreen() {
   const [scannedUrl, setScannedUrl] = useState<string | null>(null);
   const scannedRef = useRef(false);
   const [cameraKey, setCameraKey] = useState(0);
+
+  const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
+  const { data: departments } = useQuery({ queryKey: queryKeys.departments, queryFn: listDepartments });
 
   const { profile } = useAuth();
   const { data: hospital } = usePrimaryHospital();
@@ -53,6 +59,7 @@ export default function ScanScreen() {
   function resetScanner() {
     scannedRef.current = false;
     setScannedUrl(null);
+    setSelectedDeptId(null);
     setCameraKey((k) => k + 1);
     setStage("scanning");
   }
@@ -64,6 +71,7 @@ export default function ScanScreen() {
         patientId: profile.id,
         hospitalId: hospital.id,
         fullName: profile.full_name,
+        departmentId: selectedDeptId,
       });
       setCheckinId(checkin.id);
       setStage("success");
@@ -161,17 +169,83 @@ export default function ScanScreen() {
   }
 
   if (stage === "confirming") {
+    const opdDepartments = (departments ?? []).filter((d) => d.department_type === "OPD" || !d.department_type);
+
     return (
-      <ScreenContainer scroll={false}>
-        <View className="flex-1 items-center justify-center px-4">
-          <Card className="w-full items-center gap-3 py-8">
-            <QrCode size={40} color="#047857" />
-            <Text className="text-xl font-bold text-slate-900">Confirm Spot Check-In</Text>
-            <Text className="text-center text-base text-slate-700">{hospital?.name ?? "Reception Counter"}</Text>
-            <Text className="text-center text-sm text-slate-400">Checking in as {profile?.full_name}</Text>
-            <Button label="Confirm & Check In" className="mt-4 w-full" onPress={confirmCheckIn} loading={spotCheckIn.isPending} />
-            <Button label="Cancel" variant="ghost" onPress={resetScanner} />
+      <ScreenContainer scroll={true}>
+        <View className="py-6 px-4 gap-4">
+          <Card className="items-center gap-2 py-6">
+            <QrCode size={36} color="#047857" />
+            <Text className="text-xl font-bold text-slate-900">Counter Check-In</Text>
+            <Text className="text-center text-sm font-semibold text-slate-700">{hospital?.name ?? "Government Hospital OPD"}</Text>
+            <Text className="text-center text-xs text-slate-400">Patient: {profile?.full_name}</Text>
           </Card>
+
+          <Text className="text-base font-bold text-slate-900 mt-2">Select OPD Department</Text>
+          <Text className="text-xs text-slate-500 -mt-2">
+            Choosing a department sends you directly to the doctor&apos;s queue.
+          </Text>
+
+          {/* Help Desk Option */}
+          <TouchableOpacity
+            onPress={() => setSelectedDeptId(null)}
+            activeOpacity={0.8}
+            className={`p-4 rounded-2xl border flex-row items-center gap-3 ${
+              selectedDeptId === null ? "bg-amber-50 border-amber-500 shadow-sm" : "bg-white border-slate-200"
+            }`}
+          >
+            <View className="rounded-full bg-amber-100 p-2.5">
+              <HelpCircle size={22} color="#b45309" />
+            </View>
+            <View className="flex-1">
+              <Text className="font-bold text-sm text-slate-900">I don&apos;t know / Need Help</Text>
+              <Text className="text-xs text-slate-500">Go to Reception Help Desk for assistance</Text>
+            </View>
+            {selectedDeptId === null && (
+              <View className="h-5 w-5 rounded-full bg-amber-600 items-center justify-center">
+                <Text className="text-white text-xs font-bold">✓</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* OPD Department List */}
+          <View className="gap-2.5">
+            {opdDepartments.map((dept) => {
+              const isSelected = selectedDeptId === dept.id;
+              return (
+                <TouchableOpacity
+                  key={dept.id}
+                  onPress={() => setSelectedDeptId(dept.id)}
+                  activeOpacity={0.8}
+                  className={`p-4 rounded-2xl border flex-row items-center justify-between ${
+                    isSelected ? "bg-emerald-50 border-emerald-500 shadow-sm" : "bg-white border-slate-200"
+                  }`}
+                >
+                  <View className="flex-1 pr-2">
+                    <Text className="font-bold text-sm text-slate-900">{dept.name}</Text>
+                    {dept.description && (
+                      <Text className="text-xs text-slate-500 mt-0.5" numberOfLines={1}>
+                        {dept.description}
+                      </Text>
+                    )}
+                  </View>
+                  {isSelected && (
+                    <View className="h-5 w-5 rounded-full bg-emerald-600 items-center justify-center">
+                      <Text className="text-white text-xs font-bold">✓</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Button
+            label={selectedDeptId ? "Confirm & Join Department Queue" : "Confirm & Go to Help Desk"}
+            className="mt-4 w-full"
+            onPress={confirmCheckIn}
+            loading={spotCheckIn.isPending}
+          />
+          <Button label="Cancel" variant="ghost" onPress={resetScanner} />
         </View>
       </ScreenContainer>
     );

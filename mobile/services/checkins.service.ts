@@ -29,6 +29,7 @@ export interface SpotCheckInInput {
 
 /** Creates a walk-in check-in tied to the logged-in patient's profile (the QR spot-registration flow). */
 export async function spotCheckIn(input: SpotCheckInInput): Promise<Checkin> {
+  const initialStatus = input.departmentId ? "waiting_department" : "waiting_reception";
   const { data, error } = await supabase
     .from("checkins")
     .insert({
@@ -36,7 +37,7 @@ export async function spotCheckIn(input: SpotCheckInInput): Promise<Checkin> {
       patient_id: input.patientId,
       hospital_id: input.hospitalId,
       department_id: input.departmentId ?? null,
-      status: "waiting",
+      status: initialStatus,
       priority: "normal",
       source: "self",
     })

@@ -15,6 +15,8 @@ export const backendMode = isSupabaseConfigured ? 'supabase' : 'mock'
 
 export const STATUS = {
   WAITING: 'waiting',
+  WAITING_RECEPTION: 'waiting_reception',
+  WAITING_DEPARTMENT: 'waiting_department',
   IN_CONSULT: 'in_consult',
   DONE: 'done',
   LEFT: 'left',
@@ -23,7 +25,7 @@ export const STATUS = {
 }
 
 // Statuses that still occupy the active waiting queue.
-const ACTIVE = new Set([STATUS.WAITING, STATUS.PAUSED])
+const ACTIVE = new Set([STATUS.WAITING, STATUS.WAITING_RECEPTION, STATUS.WAITING_DEPARTMENT, STATUS.PAUSED])
 
 const LS_KEY = 'ethos_checkins'
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('ethos') : null
@@ -206,17 +208,121 @@ export async function findDoctorByCode(code) {
   return null
 }
 
+const MOCK_STAFF_KEY = 'ethos_staff'
+const MOCK_DEFAULT_STAFF = [
+  { id: 'stf-admin', name: 'System Administrator', role: 'admin', access_code: '9999', is_active: true },
+  { id: 'stf-rec', name: 'Reception Desk 1', role: 'reception', access_code: '1111', is_active: true },
+  { id: 'stf-pharm', name: 'Central Pharmacy', role: 'pharmacist', access_code: '3333', is_active: true },
+  { id: 'stf-doc-gen', name: 'Dr. Rajesh Kumar', role: 'doctor', access_code: '2222', department_id: 'dept-genmed', is_active: true },
+]
+
+function mockStaffRead() {
+  try {
+    const raw = localStorage.getItem(MOCK_STAFF_KEY)
+    if (!raw) {
+      localStorage.setItem(MOCK_STAFF_KEY, JSON.stringify(MOCK_DEFAULT_STAFF))
+      return MOCK_DEFAULT_STAFF
+    }
+    return JSON.parse(raw)
+  } catch {
+    return MOCK_DEFAULT_STAFF
+  }
+}
+
+function mockStaffWrite(rows) {
+  localStorage.setItem(MOCK_STAFF_KEY, JSON.stringify(rows))
+}
+
+export async function verifyStaffAccessCode(code) {
+  if (!code) return null
+  const pin = String(code).trim()
+
+  if (backendMode === 'supabase') {
+    const { data, error } = await supabase
+      .from('staff')
+      .select('id, name, role, access_code, department_id, is_active')
+      .eq('access_code', pin)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (!error && data) return data
+  }
+
+  const list = mockStaffRead()
+  return list.find((s) => s.access_code === pin && s.is_active) || null
+}
+
+export async function listStaff() {
+  if (backendMode === 'supabase') {
+    const { data, error } = await supabase
+      .from('staff')
+      .select('*, departments(name)')
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return data || []
+  }
+  return mockStaffRead()
+}
+
+export async function addStaff(staffMember) {
+  const row = { id: newId(), created_at: nowIso(), is_active: true, ...staffMember }
+  if (backendMode === 'supabase') {
+    const { data, error } = await supabase.from('staff').insert(row).select().single()
+    if (error) throw error
+    return data
+  }
+  const list = mockStaffRead()
+  list.unshift(row)
+  mockStaffWrite(list)
+  return row
+}
+
+export async function updateStaff(id, fields) {
+  if (backendMode === 'supabase') {
+    const { error } = await supabase.from('staff').update(fields).eq('id', id)
+    if (error) throw error
+    return
+  }
+  const list = mockStaffRead().map((s) => (s.id === id ? { ...s, ...fields } : s))
+  mockStaffWrite(list)
+}
+
+export async function deleteStaff(id) {
+  if (backendMode === 'supabase') {
+    const { error } = await supabase.from('staff').delete().eq('id', id)
+    if (error) throw error
+    return
+  }
+  const list = mockStaffRead().filter((s) => s.id !== id)
+  mockStaffWrite(list)
+}
+
+export async function forwardToDepartment(checkinId, departmentId) {
+  const updatePayload = {
+    department_id: departmentId,
+    status: STATUS.WAITING_DEPARTMENT,
+  }
+  if (backendMode === 'supabase') {
+    const { error } = await supabase.from(TABLE).update(updatePayload).eq('id', checkinId)
+    if (error) throw error
+    return
+  }
+  const rows = mockRead().map((r) => (r.id === checkinId ? { ...r, ...updatePayload } : r))
+  mockWrite(rows)
+}
+
 export async function createCheckin({ name, priority = 'normal', gender = null, age = null, source = 'self', department_id = null }) {
   const id = newId()
   const check_in_time = nowIso()
   const appointment_id = await nextApptId() // always auto + sequential
   const hash = await sha256Hex(receiptPayload({ appointment_id, name, check_in_time, id }))
+  const initialStatus = department_id ? STATUS.WAITING_DEPARTMENT : STATUS.WAITING_RECEPTION
   const row = {
     id,
     name,
     appointment_id,
     check_in_time,
-    status: STATUS.WAITING,
+    status: initialStatus,
     priority,
     gender: gender || null,
     age: age != null && age !== '' ? Number(age) : null,

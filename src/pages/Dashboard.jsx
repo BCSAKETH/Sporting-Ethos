@@ -1,71 +1,41 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { QRCodeCanvas } from 'qrcode.react'
 import Logo from '../components/Logo.jsx'
-import MetricsStrip from '../components/MetricsStrip.jsx'
 import QueueCard from '../components/QueueCard.jsx'
-import ReportsPanel from '../components/ReportsPanel.jsx'
+import { clearStaffSession, getStaffSession } from './AccessGate.jsx'
 import {
   subscribe,
   updateStatus,
   setPriority,
-  resetAll,
   sortQueue,
-  isActive,
   STATUS,
-  backendMode,
   createCheckin,
+  forwardToDepartment,
+  listDepartments,
 } from '../lib/store.js'
 import { autoPrimeVoice, announce, chime } from '../lib/voice.js'
-import { sendIntercom, onIntercom } from '../lib/intercom.js'
-import { Link } from 'react-router-dom'
 
-const AVG_MINUTES = 8
+const AVG_MINUTES = 5
 
 export default function Dashboard() {
   const [rows, setRows] = useState([])
-  const [tab, setTab] = useState('queue') // 'queue' | 'reports' | 'settings'
-  const [lastLatency, setLastLatency] = useState(null)
   const [flashIds, setFlashIds] = useState(new Set())
   const [, forceTick] = useState(0)
-
   const seenIds = useRef(null)
 
-  const [ring, setRing] = useState(null) // incoming intercom from the expert
-  const [sent, setSent] = useState(false) // "expert notified" toast
+  const [showAdd, setShowAdd] = useState(false)
+  const [forwardPatient, setForwardPatient] = useState(null)
+  const [departments, setDepartments] = useState([])
 
-  // Sound is always on — just prime the audio engine on first interaction.
+  const session = getStaffSession()
+
   useEffect(() => {
     autoPrimeVoice()
+    listDepartments().then(setDepartments).catch(console.error)
   }, [])
-
-  // Listen for expert → reception calls.
-  useEffect(() =>
-    onIntercom((msg) => {
-      if (msg.type === 'call_reception') {
-        setRing(msg)
-        chime()
-        announce('The expert is calling reception')
-        setTimeout(() => setRing(null), 12000)
-      }
-    }), [])
-
-  function callExpert() {
-    sendIntercom('call_expert', 'Reception')
-    setSent(true)
-    setTimeout(() => setSent(false), 4000)
-  }
-
-  const [showAdd, setShowAdd] = useState(false)
 
   useEffect(() => {
     const t = setInterval(() => forceTick((n) => n + 1), 1000)
     return () => clearInterval(t)
-  }, [])
-
-  const [departments, setDepartments] = useState([])
-
-  useEffect(() => {
-    import('../lib/store.js').then((m) => m.listDepartments()).then(setDepartments).catch(console.error)
   }, [])
 
   useEffect(() => {
@@ -76,8 +46,6 @@ export default function Dashboard() {
         const fresh = next.filter((r) => !seenIds.current.has(r.id))
         fresh.forEach((r) => seenIds.current.add(r.id))
         if (fresh.length) {
-          const newest = fresh[fresh.length - 1]
-          setLastLatency(Date.now() - new Date(newest.check_in_time).getTime())
           setFlashIds((prev) => {
             const s = new Set(prev)
             fresh.forEach((r) => s.add(r.id))
@@ -90,7 +58,7 @@ export default function Dashboard() {
               return s
             })
           }, 1500)
-          fresh.forEach((r) => announce(`${r.name} has arrived`))
+          fresh.forEach((r) => announce(`${r.name} has arrived at help desk`))
           chime()
         }
       }
@@ -99,214 +67,197 @@ export default function Dashboard() {
     return unsub
   }, [])
 
-  const rowsWithDept = useMemo(() => {
-    const deptMap = new Map(departments.map((d) => [d.id, d.name]))
-    return rows.map((r) => ({
-      ...r,
-      department_name: r.department_name || (r.department_id ? deptMap.get(r.department_id) : null),
-    }))
-  }, [rows, departments])
+  // Reception only sees patients who need reception / skipped department selection
+  const receptionQueue = useMemo(() => {
+    const unassigned = rows.filter(
+      (r) => r.status === STATUS.WAITING_RECEPTION || r.status === STATUS.WAITING
+    )
+    return sortQueue(unassigned)
+  }, [rows])
 
-  async function handleReset() {
-    if (!confirm('Clear the whole queue? (demo reset)')) return
-    await resetAll()
-    seenIds.current = null
-    setLastLatency(null)
+  function callNextPatient() {
+    if (receptionQueue.length === 0) return
+    const first = receptionQueue[0]
+    chime()
+    announce(`Patient ${first.name}, please proceed to Reception Counter 1`)
   }
 
   function changeStatus(id, status) {
-    if (status === STATUS.IN_CONSULT) {
-      const r = rows.find((x) => x.id === id)
-      if (r) {
-        chime()
-        announce(`Calling ${r.name}`)
-      }
-    }
     updateStatus(id, status)
   }
 
-  const activeQueue = useMemo(() => sortQueue(rowsWithDept.filter(isActive)), [rowsWithDept])
-  const inConsult = rowsWithDept.filter((r) => r.status === STATUS.IN_CONSULT)
-  const finished = rowsWithDept.filter(
-    (r) => r.status === STATUS.DONE || r.status === STATUS.LEFT || r.status === STATUS.NO_SHOW
-  )
-  const metrics = {
-    waiting: rows.filter((r) => r.status === STATUS.WAITING || r.status === STATUS.PAUSED).length,
-    inConsult: inConsult.length,
-    done: rows.filter((r) => r.status === STATUS.DONE).length,
-    lwbs: rows.filter((r) => r.status === STATUS.LEFT).length,
-    noShow: rows.filter((r) => r.status === STATUS.NO_SHOW).length,
-    lastLatencyMs: lastLatency,
-  }
-
   return (
-    <div className="min-h-full bg-[#FAF8F5]">
+    <div className="min-h-full bg-slate-50">
       {/* Header */}
-      <header className="bg-[#FAF8F5] border-b border-purple-200/60 sticky top-0 z-40 backdrop-blur-md">
+      <header className="bg-white border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Logo />
-            <LiveBadge />
+            <span className="rounded-md bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800 uppercase tracking-wider">
+              Reception &amp; Triage Desk
+            </span>
           </div>
 
-          <nav className="flex items-center gap-1 rounded-xl bg-purple-100/70 p-1 border border-purple-200/40">
-            <TabBtn active={tab === 'queue'} onClick={() => setTab('queue')}>
-              Live Queue
-            </TabBtn>
-            <TabBtn active={tab === 'reports'} onClick={() => setTab('reports')}>
-              Reports
-            </TabBtn>
-            <TabBtn active={tab === 'settings'} onClick={() => setTab('settings')}>
-              Settings
-            </TabBtn>
-          </nav>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={callNextPatient}
+              disabled={receptionQueue.length === 0}
+              className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+            >
+              📣 Call Next Patient
+            </button>
 
-          <div className="flex items-center gap-2">
             <button
               onClick={() => setShowAdd(true)}
-              className="rounded-xl bg-purple-600 px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-purple-600/20 hover:bg-purple-700 active:scale-95 transition-all duration-150"
+              className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-700"
             >
-              ＋ Add patient
+              ＋ Add Walk-in Patient
             </button>
+
+            <span className="text-xs font-medium text-slate-600 pl-2">
+              {session?.name || 'Reception Staff'}
+            </span>
+
             <button
-              onClick={callExpert}
-              className="rounded-xl bg-purple-950 px-3.5 py-2 text-sm font-semibold text-white shadow-md hover:bg-purple-900 active:scale-95 transition-all duration-150"
+              onClick={clearStaffSession}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
             >
-              🔔 Call expert
-            </button>
-            <Link
-              to="/expert"
-              className="rounded-xl border border-purple-200/80 bg-white px-3 py-2 text-sm font-medium text-purple-900 hover:bg-purple-50 transition-all duration-150"
-            >
-              Expert
-            </Link>
-            <Link
-              to="/pharmacy"
-              className="rounded-xl border border-purple-200/80 bg-white px-3 py-2 text-sm font-medium text-purple-900 hover:bg-purple-50 transition-all duration-150"
-            >
-              Pharmacy
-            </Link>
-            <button
-              onClick={handleReset}
-              className="rounded-xl border border-purple-200/80 bg-white px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50 transition-all duration-150"
-            >
-              Reset
+              🔒 Lock
             </button>
           </div>
         </div>
       </header>
 
-      {ring && (
-        <div className="bg-purple-700 text-white ring-blink shadow-lg">
-          <div className="max-w-6xl mx-auto px-5 py-3 flex items-center justify-between">
-            <span className="font-semibold text-lg">
-              <span className="bell-shake mr-1">🔔</span>
-              The expert is calling reception{ring.from ? ` (${ring.from})` : ''}.
-            </span>
-            <button onClick={() => setRing(null)} className="rounded-lg bg-white/25 px-3 py-1 text-sm font-semibold hover:bg-white/40">Dismiss</button>
-          </div>
-        </div>
-      )}
-      {sent && (
-        <div className="bg-purple-600 text-white">
-          <div className="max-w-6xl mx-auto px-5 py-2 text-sm font-medium">✓ The expert has been notified.</div>
-        </div>
-      )}
-
       <main className="max-w-6xl mx-auto px-5 py-6">
-        {tab === 'queue' ? (
-          <div className="fade-up">
-            <div className="mb-4 flex items-end justify-between">
-              <div>
-                <h1 className="text-xl font-bold text-purple-950">Live Queue</h1>
-                <p className="text-xs font-medium text-purple-700/80">
-                  {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+        <div className="fade-up">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">Unassigned Reception Queue</h1>
+              <p className="text-sm text-slate-500">
+                Patients who skipped department selection or requested assistance at the counter.
+              </p>
+            </div>
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-800">
+              {receptionQueue.length} Waiting at Desk
+            </span>
+          </div>
+
+          <div className="mt-4">
+            {receptionQueue.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-12 text-center">
+                <p className="text-base font-bold text-slate-700">No patients waiting at reception</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Patients who scan the QR code and select a department bypass reception and go straight to doctor OPD queues.
                 </p>
               </div>
-            </div>
-            <MetricsStrip {...metrics} />
-
-            <div className="mt-6 grid gap-6 lg:grid-cols-3">
-              {/* Waiting queue */}
-              <section className="lg:col-span-2">
-                <SectionTitle>Waiting queue · {activeQueue.length}</SectionTitle>
-                {activeQueue.length === 0 ? (
-                  <EmptyState />
-                ) : (
-                  <div className="space-y-3">
-                    {activeQueue.map((row, i) => (
-                      <div key={row.id} className="fade-up">
-                        <QueueCard
-                          row={row}
-                          position={row.status === STATUS.PAUSED ? null : i + 1}
-                          isNew={flashIds.has(row.id)}
-                          eta={`${Math.max(0, i * AVG_MINUTES)} min`}
-                          onStatus={changeStatus}
-                          onPriority={setPriority}
-                        />
-                      </div>
-                    ))}
+            ) : (
+              <div className="space-y-3">
+                {receptionQueue.map((row, i) => (
+                  <div key={row.id} className="fade-up flex items-center gap-3">
+                    <div className="flex-1">
+                      <QueueCard
+                        row={row}
+                        position={i + 1}
+                        isNew={flashIds.has(row.id)}
+                        eta={`${Math.max(0, i * AVG_MINUTES)} min`}
+                        onStatus={changeStatus}
+                        onPriority={setPriority}
+                      />
+                    </div>
+                    <button
+                      onClick={() => setForwardPatient(row)}
+                      className="rounded-2xl bg-emerald-600 px-5 py-4 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 active:scale-95 transition shrink-0"
+                    >
+                      ➡ Forward to Doctor
+                    </button>
                   </div>
-                )}
-              </section>
-
-              {/* Side column */}
-              <aside className="space-y-6">
-                <section>
-                  <SectionTitle>In consultation · {inConsult.length}</SectionTitle>
-                  {inConsult.length === 0 ? (
-                    <Muted>No one in consultation.</Muted>
-                  ) : (
-                    <div className="space-y-3">
-                      {inConsult.map((row) => (
-                        <QueueCard key={row.id} row={row} onStatus={changeStatus} onPriority={setPriority} />
-                      ))}
-                    </div>
-                  )}
-                  {inConsult.length > 0 && (
-                    <p className="mt-2 text-[11px] text-purple-600">
-                      Consultation recording &amp; charting happens in the{' '}
-                      <a href="/expert" className="text-purple-700 font-semibold hover:underline">Expert Console</a>.
-                    </p>
-                  )}
-                </section>
-                <section>
-                  <SectionTitle>Completed & left · {finished.length}</SectionTitle>
-                  {finished.length === 0 ? (
-                    <Muted>Nothing yet.</Muted>
-                  ) : (
-                    <div className="space-y-2">
-                      {finished
-                        .slice()
-                        .reverse()
-                        .map((row) => (
-                          <QueueCard key={row.id} row={row} onStatus={changeStatus} onPriority={setPriority} />
-                        ))}
-                    </div>
-                  )}
-                </section>
-              </aside>
-            </div>
+                ))}
+              </div>
+            )}
           </div>
-        ) : tab === 'reports' ? (
-          <div className="fade-up">
-            <ReportsPanel />
-          </div>
-        ) : (
-          <div className="fade-up">
-            <SettingsTab />
-          </div>
-        )}
+        </div>
       </main>
 
       {showAdd && <AddPatientModal onClose={() => setShowAdd(false)} />}
+
+      {forwardPatient && (
+        <ForwardModal
+          patient={forwardPatient}
+          departments={departments}
+          onClose={() => setForwardPatient(null)}
+          onForwarded={() => setForwardPatient(null)}
+        />
+      )}
     </div>
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Reception: add / book a patient directly                            */
-/* ------------------------------------------------------------------ */
+function ForwardModal({ patient, departments, onClose, onForwarded }) {
+  const [departmentId, setDepartmentId] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function handleForward(e) {
+    e.preventDefault()
+    if (!departmentId) return
+    setBusy(true)
+    try {
+      await forwardToDepartment(patient.id, departmentId)
+      const deptName = departments.find((d) => d.id === departmentId)?.name || 'Department'
+      chime()
+      announce(`Patient ${patient.name} assigned to ${deptName}`)
+      onForwarded()
+    } catch (err) {
+      console.error(err)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-900">Forward Patient to Doctor</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
+        </div>
+
+        <p className="mt-2 text-sm text-slate-600">
+          Sending <b>{patient.name}</b> to a specialized OPD department queue.
+        </p>
+
+        <form onSubmit={handleForward} className="mt-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Select OPD Department</label>
+            <select
+              value={departmentId}
+              onChange={(e) => setDepartmentId(e.target.value)}
+              className="input w-full font-medium text-base"
+              required
+            >
+              <option value="">Choose Department…</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-slate-200 py-3 font-medium text-slate-600 hover:bg-slate-50">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={busy || !departmentId}
+              className="flex-1 rounded-xl bg-emerald-600 py-3 font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {busy ? 'Assigning…' : 'Forward to Doctor'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 function AddPatientModal({ onClose }) {
   const [name, setName] = useState('')
   const [age, setAge] = useState('')
@@ -317,7 +268,7 @@ function AddPatientModal({ onClose }) {
   const [err, setErr] = useState('')
 
   useEffect(() => {
-    import('../lib/store.js').then((m) => m.listDepartments()).then(setDepartments).catch(console.error)
+    listDepartments().then(setDepartments).catch(console.error)
   }, [])
 
   async function submit(e) {
@@ -341,184 +292,51 @@ function AddPatientModal({ onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-purple-950/40 backdrop-blur-sm p-4 animate-fade-in" onClick={onClose}>
-      <div className="w-full max-w-md card p-6 bg-[#FAF8F5] border border-purple-200/70 shadow-2xl animate-pop" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-purple-950">Add patient (walk-in)</h2>
-          <button onClick={onClose} className="text-purple-400 hover:text-purple-700 text-xl font-bold leading-none">×</button>
+          <h2 className="text-lg font-bold text-slate-900">Add Walk-in Patient</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
         </div>
-        <p className="mt-1 text-sm text-purple-700/80">Register a patient at the desk. A sequential appointment ID is assigned automatically.</p>
+        <p className="mt-1 text-xs text-slate-500">Register a patient directly at the desk.</p>
+
         <form onSubmit={submit} className="mt-4 space-y-4">
-          <input autoFocus value={name} onChange={(e) => { setName(e.target.value); setErr('') }} placeholder="Full name" className="input bg-white" />
+          <input autoFocus value={name} onChange={(e) => { setName(e.target.value); setErr('') }} placeholder="Full name" className="input w-full" />
           <div className="grid grid-cols-2 gap-3">
-            <input value={age} inputMode="numeric" onChange={(e) => setAge(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))} placeholder="Age" className="input bg-white" />
+            <input value={age} inputMode="numeric" onChange={(e) => setAge(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))} placeholder="Age" className="input" />
             <div className="grid grid-cols-3 gap-1.5">
               {['Male', 'Female', 'Other'].map((g) => (
                 <button key={g} type="button" onClick={() => setGender(gender === g ? '' : g)}
-                  className={`rounded-xl border px-1 py-3 text-sm font-semibold transition ${gender === g ? 'border-purple-500 bg-purple-100 text-purple-900 shadow-sm' : 'border-purple-200/80 bg-white text-purple-800 hover:bg-purple-50'}`}>
+                  className={`rounded-xl border px-1 py-3 text-sm font-medium ${gender === g ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
                   {g[0]}
                 </button>
               ))}
             </div>
           </div>
 
-          {departments.length > 0 && (
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-purple-500">Department</span>
-              <select
-                value={departmentId}
-                onChange={(e) => setDepartmentId(e.target.value)}
-                className="input mt-1 w-full bg-white"
-              >
-                <option value="">General / Unassigned</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div>
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-1">Direct Department Assignment (Optional)</span>
+            <select
+              value={departmentId}
+              onChange={(e) => setDepartmentId(e.target.value)}
+              className="input w-full"
+            >
+              <option value="">Unassigned (Send to Help Desk Queue)</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
 
-          {err && <p className="text-sm text-purple-600 font-medium">{err}</p>}
+          {err && <p className="text-xs font-semibold text-rose-600">{err}</p>}
           <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-purple-200/80 py-3 font-semibold text-purple-800 hover:bg-purple-50 transition">Cancel</button>
-            <button type="submit" disabled={busy} className="flex-1 rounded-xl bg-purple-600 py-3 font-semibold text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 disabled:opacity-60 transition">
-              {busy ? 'Adding…' : 'Add patient'}
+            <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-slate-200 py-3 font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={busy} className="flex-1 rounded-xl bg-emerald-600 py-3 font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+              {busy ? 'Registering…' : 'Add Patient'}
             </button>
           </div>
         </form>
       </div>
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Settings tab — download the universal check-in QR                   */
-/* ------------------------------------------------------------------ */
-function SettingsTab() {
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  const checkinUrl = `${origin}/checkin`
-  const isLocalhost = /localhost|127\.0\.0\.1/.test(origin)
-  const [copied, setCopied] = useState(false)
-
-  function downloadQR() {
-    const canvas = document.getElementById('qr-hires')
-    if (!canvas) return
-    const a = document.createElement('a')
-    a.href = canvas.toDataURL('image/png')
-    a.download = 'sporting-ethos-checkin-qr.png'
-    a.click()
-  }
-  function copyUrl() {
-    navigator.clipboard?.writeText(checkinUrl).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
-    })
-  }
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <div className="card p-6 bg-white border border-purple-100/70 shadow-sm">
-        <h2 className="text-lg font-bold text-purple-950">Universal check-in QR</h2>
-        <p className="mt-1 text-sm text-purple-700/80">
-          Download this and print it (or show it on a screen) at your reception. Every patient
-          scans the same code to check in.
-        </p>
-
-        <div className="mt-5 flex flex-col items-center">
-          <div className="rounded-2xl border border-purple-200/80 p-4 shadow-sm bg-[#FAF8F5]">
-            <QRCodeCanvas value={checkinUrl} size={200} includeMargin level="M" />
-          </div>
-          <div style={{ display: 'none' }}>
-            <QRCodeCanvas id="qr-hires" value={checkinUrl} size={1024} includeMargin level="M" />
-          </div>
-          <code className="mt-3 text-xs text-purple-500 break-all text-center font-mono">{checkinUrl}</code>
-          <div className="mt-4 flex w-full gap-2">
-            <button onClick={downloadQR} className="flex-1 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 transition">
-              Download QR (PNG)
-            </button>
-            <button onClick={copyUrl} className="rounded-xl border border-purple-200/80 px-4 py-3 text-sm font-semibold text-purple-800 hover:bg-purple-50 transition">
-              {copied ? '✓ Copied' : 'Copy link'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="card p-6 bg-white border border-purple-100/70 shadow-sm">
-        <h2 className="text-lg font-bold text-purple-950">How to use it</h2>
-        <ol className="mt-3 space-y-3 text-sm text-purple-800">
-          <Step n="1">Place the QR where patients arrive — a printed poster, tablet, or reception screen.</Step>
-          <Step n="2">A patient scans it, enters their name (+ appointment ID if they have one), and taps check in.</Step>
-          <Step n="3">They appear on the live queue instantly — with a highlight, a chime, and a voice announcement.</Step>
-        </ol>
-
-        {isLocalhost ? (
-          <div className="mt-5 rounded-xl bg-purple-50 border border-purple-200/80 p-4 text-purple-900 text-sm">
-            <b>Heads up:</b> you're viewing this at <code>localhost</code>, so the QR points to
-            localhost and won't open on a phone. Open this dashboard using your computer's network
-            address (e.g. <code>http://192.168.x.x:5173</code>) and download the QR again.
-          </div>
-        ) : (
-          <div className="mt-5 rounded-xl bg-purple-50 border border-purple-200/80 p-4 text-purple-900 text-sm">
-            This QR points to <code>{checkinUrl}</code> — phones on the same Wi-Fi can scan it.
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Small UI atoms                                                      */
-/* ------------------------------------------------------------------ */
-function TabBtn({ active, onClick, children }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all duration-150 ${
-        active ? 'bg-purple-600 text-white shadow-sm font-semibold' : 'text-purple-800 hover:text-purple-950 hover:bg-purple-200/40'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
-
-function LiveBadge() {
-  const supa = backendMode === 'supabase'
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-50 border border-purple-200/70 px-2.5 py-1 text-xs font-semibold text-purple-800">
-      <span className={`h-1.5 w-1.5 rounded-full ${supa ? 'bg-purple-600 animate-pulse' : 'bg-purple-400'}`} />
-      {supa ? 'Live' : 'Local demo'}
-    </span>
-  )
-}
-
-function SectionTitle({ children }) {
-  return (
-    <h2 className="text-xs font-bold uppercase tracking-wider text-purple-500 mb-3">{children}</h2>
-  )
-}
-function Muted({ children }) {
-  return <p className="text-sm text-purple-400">{children}</p>
-}
-function Step({ n, children }) {
-  return (
-    <li className="flex gap-3">
-      <span className="shrink-0 h-6 w-6 rounded-full bg-purple-100 text-purple-800 text-xs font-bold flex items-center justify-center">
-        {n}
-      </span>
-      <span>{children}</span>
-    </li>
-  )
-}
-
-function EmptyState() {
-  return (
-    <div className="rounded-2xl border border-dashed border-purple-200 bg-white p-10 text-center shadow-sm">
-      <p className="font-semibold text-purple-950">The waiting room is empty</p>
-      <p className="mt-1 text-sm text-purple-500">
-        New check-ins appear here instantly — with a highlight, a chime, and a voice announcement.
-      </p>
     </div>
   )
 }

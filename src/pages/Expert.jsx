@@ -7,8 +7,7 @@ import { autoPrimeVoice, announce, chime } from '../lib/voice.js'
 import { sendIntercom, onIntercom } from '../lib/intercom.js'
 import { generateGroqConsultationSummary } from '../lib/chart.js'
 
-const AUTH_KEY = 'ethos_expert_authed'
-const DOCTOR_KEY = 'ethos_doctor_info'
+import { getStaffSession, clearStaffSession } from './AccessGate.jsx'
 
 const minsSince = (iso) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
 const mmss = (iso) => {
@@ -17,64 +16,8 @@ const mmss = (iso) => {
 }
 
 export default function Expert() {
-  const [authed, setAuthed] = useState(() => localStorage.getItem(AUTH_KEY) === '1')
-  const [doctor, setDoctor] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(DOCTOR_KEY) || 'null') } catch { return null }
-  })
-
-  if (!authed) return <Gate onOk={(doc) => { setDoctor(doc); setAuthed(true) }} />
-  return <Console doctor={doctor} onLogout={() => { localStorage.removeItem(AUTH_KEY); localStorage.removeItem(DOCTOR_KEY); setAuthed(false) }} />
-}
-
-function Gate({ onOk }) {
-  const [code, setCode] = useState('')
-  const [err, setErr] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  async function submit(e) {
-    e.preventDefault()
-    if (!code.trim()) return setErr('Enter an access code.')
-    setBusy(true)
-    setErr('')
-    try {
-      const doc = await findDoctorByCode(code.trim())
-      if (doc) {
-        localStorage.setItem(AUTH_KEY, '1')
-        localStorage.setItem(DOCTOR_KEY, JSON.stringify(doc))
-        onOk(doc)
-      } else {
-        setErr('Invalid access code.')
-      }
-    } catch (err) {
-      console.error(err)
-      setErr('Error verifying code.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="min-h-full flex flex-col items-center justify-center px-5 bg-[#FAF8F5]">
-      <div className="w-full max-w-sm rounded-3xl border border-purple-100/70 bg-white p-6 shadow-xl">
-        <div className="flex justify-center mb-4"><Logo /></div>
-        <h1 className="text-center text-xl font-bold text-purple-950">Clinical &amp; ER Portal</h1>
-        <p className="text-center text-sm text-purple-600/80 mt-1">Enter doctor or ER nurse access code to continue.</p>
-        <form onSubmit={submit} className="mt-5 space-y-3">
-          <input autoFocus type="password" value={code} onChange={(e) => { setCode(e.target.value); setErr('') }}
-            placeholder="Access code"
-            className="w-full rounded-xl border border-purple-200/80 px-4 py-3 text-lg text-center tracking-widest focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none bg-white" />
-          {err && <p className="text-sm text-purple-600 text-center font-semibold">{err}</p>}
-          <button type="submit" disabled={busy} className="w-full rounded-xl bg-purple-600 py-3 font-semibold text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 disabled:opacity-60 active:scale-95 transition">
-            {busy ? 'Verifying…' : 'Enter Portal'}
-          </button>
-        </form>
-        <div className="mt-4 text-center">
-          <span className="text-[11px] text-purple-500">ER Nurse Code: <code className="font-mono text-purple-700 font-bold">nurse</code> or <code className="font-mono text-purple-700 font-bold">201</code></span>
-        </div>
-        <Link to="/" className="mt-3 block text-center text-xs text-purple-400 font-medium hover:text-purple-700">← Reception dashboard</Link>
-      </div>
-    </div>
-  )
+  const session = getStaffSession()
+  return <Console doctor={session} onLogout={clearStaffSession} />
 }
 
 function Console({ doctor, onLogout }) {
@@ -98,18 +41,22 @@ function Console({ doctor, onLogout }) {
     if (r) { chime(); announce(`Calling ${r.name}`) }
     updateStatus(id, STATUS.IN_CONSULT)
   }
-  function callReception() { sendIntercom('call_reception', doctor?.full_name || 'ER Nurse'); setSent(true); setTimeout(() => setSent(false), 4000) }
+  function callReception() { sendIntercom('call_reception', doctor?.name || 'Doctor'); setSent(true); setTimeout(() => setSent(false), 4000) }
 
   const filteredRows = useMemo(() => {
     if (!doctor?.department_id) return rows
     return rows.filter((r) => !r.department_id || r.department_id === doctor.department_id)
   }, [rows, doctor])
 
-  const waiting = useMemo(() => sortQueue(filteredRows.filter(isActive)), [filteredRows])
+  const waiting = useMemo(() => {
+    const activeDept = filteredRows.filter(
+      (r) => r.status === STATUS.WAITING_DEPARTMENT || r.status === STATUS.WAITING
+    )
+    return sortQueue(activeDept)
+  }, [filteredRows])
   const inConsult = filteredRows.filter((r) => r.status === STATUS.IN_CONSULT)
 
-  const isNurse = doctor?.is_nurse
-  const deptName = isNurse ? '🚑 ER Triage & Emergency Response' : (doctor?.departments?.name || (doctor?.department_id ? 'My Department' : 'All Departments'))
+  const deptName = doctor?.departments?.name || (doctor?.department_id ? 'OPD Department Queue' : 'All OPD Queues')
 
   return (
     <div className="min-h-full bg-[#FAF8F5]">

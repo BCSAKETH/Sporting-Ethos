@@ -6,20 +6,29 @@ import PatientCheckIn from './pages/PatientCheckIn.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Expert from './pages/Expert.jsx'
 import Pharmacy from './pages/Pharmacy.jsx'
+import Admin from './pages/Admin.jsx'
+import AccessGate from './pages/AccessGate.jsx'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
-        {/* One dashboard — the expert / reception command centre. */}
-        <Route path="/" element={<Dashboard />} />
-        {/* Expert console — credential-gated. */}
-        <Route path="/expert" element={<Expert />} />
-        {/* Pharmacy — counter + inventory, credential-gated. */}
-        <Route path="/pharmacy" element={<Pharmacy />} />
-        {/* Patient check-in — reached by scanning the universal QR. */}
+        {/* Reception Desk */}
+        <Route path="/" element={<AccessGate requiredRole="reception"><Dashboard /></AccessGate>} />
+
+        {/* Doctor OPD Console */}
+        <Route path="/expert" element={<AccessGate requiredRole="doctor"><Expert /></AccessGate>} />
+
+        {/* Pharmacy Console */}
+        <Route path="/pharmacy" element={<AccessGate requiredRole="pharmacist"><Pharmacy /></AccessGate>} />
+
+        {/* Admin Command Centre */}
+        <Route path="/admin" element={<AccessGate requiredRole="admin"><Admin /></AccessGate>} />
+
+        {/* Patient self check-in — reached by scanning the counter QR code (Public) */}
         <Route path="/checkin" element={<PatientCheckIn />} />
-        {/* Legacy path redirects to the single dashboard. */}
+
+        {/* Legacy redirects */}
         <Route path="/dashboard" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
