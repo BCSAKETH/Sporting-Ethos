@@ -25,6 +25,12 @@ export interface SpotCheckInInput {
   hospitalId: string;
   fullName: string;
   departmentId?: string | null;
+  age?: number | null;
+  gender?: string | null;
+  phone?: string | null;
+  bloodGroup?: string | null;
+  height?: number | null;
+  weight?: number | null;
 }
 
 /** Creates a walk-in check-in tied to the logged-in patient's profile (the QR spot-registration flow). */
@@ -40,6 +46,12 @@ export async function spotCheckIn(input: SpotCheckInInput): Promise<Checkin> {
       status: initialStatus,
       priority: "normal",
       source: "self",
+      age: input.age ?? null,
+      gender: input.gender ?? null,
+      phone: input.phone ?? null,
+      blood_group: input.bloodGroup ?? null,
+      height: input.height ?? null,
+      weight: input.weight ?? null,
     })
     .select()
     .single();
