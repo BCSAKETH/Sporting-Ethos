@@ -128,6 +128,15 @@ export default function Dashboard() {
     setForwardPatient(first)
   }
 
+  // Call a patient up to the reception counter — announce only, NO status
+  // change. Reception then forwards them to the right department queue; the
+  // doctor is the one who moves them into consultation.
+  function callToCounter(row) {
+    setCalledIds((prev) => new Set(prev).add(row.id))
+    chime()
+    announce(`Patient ${row.name}, please proceed to Reception Counter 1`)
+  }
+
   function changeStatus(id, status) {
     if (status === STATUS.IN_CONSULT) {
       setCalledIds((prev) => new Set(prev).add(id))
@@ -242,6 +251,7 @@ export default function Dashboard() {
                       onStatus={changeStatus}
                       onPriority={setPriority}
                       onForward={(r) => setForwardPatient(r)}
+                      onCall={callToCounter}
                       isCalled={calledIds.has(row.id)}
                     />
                   </div>
