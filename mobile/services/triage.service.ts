@@ -4,7 +4,35 @@
 
 const GROQ_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY ?? "";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const WHISPER_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 const LLM = "llama-3.3-70b-versatile";
+
+// Transcribe an Expo audio recording via Groq Whisper. Uses the client key when
+// present; otherwise falls back to a public backend proxy if one is configured.
+export async function transcribeAudio(uri: string): Promise<string> {
+  const form = new FormData();
+  // React Native FormData file part — exact shape Groq/Whisper expects.
+  form.append("file", { uri, name: "recording.m4a", type: "audio/m4a" } as unknown as Blob);
+  form.append("model", "whisper-large-v3");
+
+  if (!GROQ_KEY) {
+    const proxy = process.env.EXPO_PUBLIC_TRANSCRIBE_PROXY;
+    if (!proxy) return "";
+    const res = await fetch(proxy, { method: "POST", body: form });
+    if (!res.ok) return "";
+    const d = await res.json();
+    return (d.text as string) ?? "";
+  }
+
+  const res = await fetch(WHISPER_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${GROQ_KEY}` },
+    body: form,
+  });
+  if (!res.ok) throw new Error(`Groq STT ${res.status}`);
+  const d = await res.json();
+  return (d.text as string) ?? "";
+}
 
 export interface TriageDept {
   id: string;
