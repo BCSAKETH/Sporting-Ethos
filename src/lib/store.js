@@ -227,14 +227,21 @@ export async function findDoctorByCode(code) {
   const inputCode = code.trim().toLowerCase()
 
   if (backendMode === 'supabase') {
-    const { data, error } = await supabase
-      .from('doctors')
-      .select('id, full_name, department_id, departments(name)')
-      .eq('access_code', code.trim())
-      .eq('is_active', true)
-      .maybeSingle()
-
-    if (!error && data) return data
+    try {
+      const { data, error } = await supabase.rpc('get_doctor_by_code', { p_code: code.trim() })
+      if (!error && data && data.length > 0) {
+        const doc = data[0]
+        return {
+          id: doc.id,
+          full_name: doc.full_name,
+          department_id: doc.department_id,
+          departments: { name: doc.department_name },
+          is_nurse: doc.is_nurse || false
+        }
+      }
+    } catch (e) {
+      console.warn('Supabase get_doctor_by_code RPC error, using fallback:', e)
+    }
   }
 
   if (MOCK_DOCTORS_BY_CODE[inputCode]) {
