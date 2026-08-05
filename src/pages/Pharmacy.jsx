@@ -14,6 +14,7 @@ import {
   deductStock,
 } from '../lib/store.js'
 import { downloadBillPDF, makeBillNo, rupees } from '../lib/bill.js'
+import LabConsole from '../components/LabConsole.jsx'
 
 export default function Pharmacy() {
   const session = getStaffSession()

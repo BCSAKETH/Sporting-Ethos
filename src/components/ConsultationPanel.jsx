@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { startRecording, generateNotes, downloadNotesPDF } from '../lib/chart.js'
 import { saveNotes } from '../lib/store.js'
 import StructuredRx from './StructuredRx.jsx'
+import LabOrderEntry from './LabOrderEntry.jsx'
 
 const SAMPLE_TRANSCRIPT =
   "Patient reports right knee pain that started three days ago after a long run. " +
@@ -142,6 +143,7 @@ export default function ConsultationPanel({ row }) {
       )}
     </div>
     <StructuredRx row={row} />
+    <LabOrderEntry row={row} />
     </>
   )
 }
