@@ -1,28 +1,34 @@
 import { useEffect, useState } from 'react'
-import { listAdmissions, setPriority, forwardToDepartment, roomDays } from '../lib/store.js'
+import { listAdmissions, setPriority, forwardToDepartment, roomDays, listLabOrders, listWardTree, transferBed } from '../lib/store.js'
 import { rupees } from '../lib/bill.js'
 
 // Admin 360° patient drawer — personal data, live OPD/IPD status, prescriptions,
 // full financials, and quick actions.
 export default function Patient360({ row, departments = [], onClose }) {
   const [admission, setAdmission] = useState(null)
+  const [labOrders, setLabOrders] = useState([])
   const [reassign, setReassign] = useState('')
   const [busy, setBusy] = useState('')
+  const [transfer, setTransfer] = useState(null) // { tree }
+
+  const samePatient = (a) =>
+    (row.patient_id && a.patient_id === row.patient_id) ||
+    (a.patient_name || '').trim().toLowerCase() === (row.name || '').trim().toLowerCase()
 
   useEffect(() => {
     let alive = true
     listAdmissions('admitted')
-      .then((list) => {
-        if (!alive) return
-        const match = list.find(
-          (a) => (row.patient_id && a.patient_id === row.patient_id) ||
-                 (a.patient_name || '').trim().toLowerCase() === (row.name || '').trim().toLowerCase()
-        )
-        setAdmission(match || null)
-      })
+      .then((list) => { if (alive) setAdmission(list.find(samePatient) || null) })
+      .catch(() => {})
+    listLabOrders()
+      .then((all) => { if (alive) setLabOrders(all.filter(samePatient)) })
       .catch(() => {})
     return () => { alive = false }
   }, [row])
+
+  async function openTransfer() {
+    try { setTransfer({ tree: await listWardTree() }) } catch (e) { console.error(e) }
+  }
 
   const dept = departments.find((d) => d.id === row.department_id)
   const consultFee = Number(dept?.consultation_fee || 0)
@@ -100,6 +106,25 @@ export default function Patient360({ row, departments = [], onClose }) {
             )}
           </Section>
 
+          {/* Lab Reports */}
+          <Section title="Lab Reports">
+            {labOrders.length === 0 ? (
+              <Empty>No lab orders on record.</Empty>
+            ) : (
+              <ul className="space-y-1.5 text-xs">
+                {labOrders.map((o) => (
+                  <li key={o.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 border border-slate-100 p-2">
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-800 truncate">{o.test_name}</div>
+                      <div className="text-[10px] text-slate-500">{labStatusLabel(o.status)}</div>
+                    </div>
+                    {o.result_url && <a href={o.result_url} target="_blank" rel="noreferrer" className="shrink-0 text-emerald-700 font-semibold">View</a>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
           {/* Financials */}
           <Section title="Financial Billing">
             <div className="rounded-xl border border-slate-200 p-3 text-sm space-y-1">
@@ -127,12 +152,82 @@ export default function Patient360({ row, departments = [], onClose }) {
                   Assign
                 </button>
               </div>
+              {admission && (
+                <button onClick={openTransfer} className="w-full rounded-xl border border-sky-300 bg-sky-50 py-2.5 text-sm font-bold text-sky-800 hover:bg-sky-100">
+                  🛏 Transfer Bed
+                </button>
+              )}
             </div>
           </Section>
         </div>
       </div>
+
+      {transfer && admission && (
+        <TransferModal admission={admission} tree={transfer.tree} onClose={() => setTransfer(null)} onDone={() => setTransfer(null)} />
+      )}
     </div>
   )
+}
+
+function TransferModal({ admission, tree, onClose, onDone }) {
+  const [wardId, setWardId] = useState(admission.ward_id || '')
+  const [roomId, setRoomId] = useState('')
+  const [bedId, setBedId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const ward = tree.find((w) => w.id === wardId)
+  const room = ward?.rooms.find((r) => r.id === roomId)
+  const beds = room?.beds.filter((b) => b.status === 'Available') || []
+
+  async function confirm() {
+    if (!bedId) return setErr('Pick an available bed.')
+    setBusy(true)
+    try {
+      await transferBed(admission.id, { ward_id: wardId, room_id: roomId, bed_id: bedId }, admission.bed_id)
+      onDone()
+    } catch (e) {
+      setErr(e?.message || 'Transfer failed.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm bg-white rounded-3xl p-6" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-slate-900 mb-3">Transfer Bed · {admission.patient_name}</h2>
+        <div className="space-y-3">
+          <select value={wardId} onChange={(e) => { setWardId(e.target.value); setRoomId(''); setBedId('') }} className="input w-full text-sm">
+            <option value="">Ward…</option>
+            {tree.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select>
+          {ward && (
+            <select value={roomId} onChange={(e) => { setRoomId(e.target.value); setBedId('') }} className="input w-full text-sm">
+              <option value="">Room…</option>
+              {ward.rooms.map((r) => <option key={r.id} value={r.id}>Room {r.room_number} · {r.room_type}</option>)}
+            </select>
+          )}
+          {room && (beds.length === 0 ? (
+            <p className="text-xs text-rose-600 font-semibold">No available beds in this room.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {beds.map((b) => (
+                <button key={b.id} onClick={() => setBedId(b.id)} className={`rounded-xl border px-3 py-2 text-xs font-bold ${bedId === b.id ? 'bg-sky-600 text-white border-sky-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>{b.bed_number}</button>
+              ))}
+            </div>
+          ))}
+          {err && <p className="text-xs text-rose-600 font-semibold">{err}</p>}
+          <div className="flex gap-2">
+            <button onClick={onClose} className="flex-1 rounded-xl border border-slate-200 py-2.5 font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
+            <button onClick={confirm} disabled={busy || !bedId} className="flex-1 rounded-xl bg-sky-600 py-2.5 font-bold text-white hover:bg-sky-700 disabled:opacity-50">{busy ? 'Transferring…' : 'Transfer'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function labStatusLabel(s) {
+  return ({ pending: 'Ordered — awaiting patient', scheduled: 'Scheduled at clinic', completed_internal: 'Result ready', completed_external: 'External report uploaded' })[s] || s
 }
 
 function statusLabel(s) {

@@ -126,11 +126,41 @@ export async function listCheckins() {
         .order('check_in_time', { ascending: true })
 
       if (!error && data) {
-        // Fetch any profiles by name if patient_id was not linked directly
-        const { data: allProfiles } = await supabase.from('profiles').select('id, full_name, phone, blood_group, height_cm, weight_kg, emergency_contact_phone, date_of_birth, gender')
+        // Hydrate the Doctor's medical file: match profiles by id OR name,
+        // pull allergies, and build each patient's past-consultation history.
+        const [{ data: allProfiles }, { data: pa }] = await Promise.all([
+          supabase.from('profiles').select('id, full_name, phone, blood_group, height_cm, weight_kg, emergency_contact_phone, date_of_birth, gender'),
+          supabase.from('patient_allergies').select('patient_id, allergies(name)'),
+        ])
+
+        const allergyByPatient = new Map()
+        ;(pa || []).forEach((a) => {
+          const list = allergyByPatient.get(a.patient_id) || []
+          if (a.allergies?.name) list.push(a.allergies.name)
+          allergyByPatient.set(a.patient_id, list)
+        })
+
+        // A checkin counts as a past consultation once it carries doctor notes.
+        const keyOf = (r) => r.patient_id || (r.name ? r.name.trim().toLowerCase() : null)
+        const hasNotes = (r) => r.notes && (r.notes.summary || r.notes.prescriptions?.length || r.notes.symptoms?.length)
+        const consultations = data.filter(hasNotes)
 
         return data.map((r) => {
           const matchedProf = r.profiles || allProfiles?.find((p) => p.id === r.patient_id || (p.full_name && r.name && p.full_name.trim().toLowerCase() === r.name.trim().toLowerCase()))
+          const key = keyOf(r)
+          const allergyList = r.patient_id ? allergyByPatient.get(r.patient_id) : null
+          const previous_consultations = key
+            ? consultations
+                .filter((c) => c.id !== r.id && keyOf(c) === key && new Date(c.check_in_time) < new Date(r.check_in_time))
+                .sort((a, b) => new Date(b.check_in_time) - new Date(a.check_in_time))
+                .map((c) => ({
+                  id: c.id,
+                  doctor: c.notes?.doctor || c.department_name || 'OPD Doctor',
+                  date: new Date(c.check_in_time).toLocaleDateString(),
+                  complaint: c.notes?.summary || c.reason || 'OPD consultation',
+                  prescriptions: (c.notes?.prescriptions || []).map((p) => (typeof p === 'string' ? p : p.medicine_name)).filter(Boolean),
+                }))
+            : []
           return {
             ...r,
             phone: r.phone || matchedProf?.phone || null,
@@ -139,6 +169,8 @@ export async function listCheckins() {
             weight: r.weight || matchedProf?.weight_kg || null,
             gender: r.gender || matchedProf?.gender || null,
             emergency_contact: r.emergency_contact || matchedProf?.emergency_contact_phone || null,
+            allergies: allergyList && allergyList.length ? allergyList.join(', ') : (r.allergies || null),
+            previous_consultations,
           }
         })
       }
@@ -703,6 +735,20 @@ export async function dischargePatient(admissionId) {
   return { days, room_charges }
 }
 
+// Move an admitted patient to a different bed — occupy the new bed, send the old
+// one to cleaning, and update the admission's ward/room/bed.
+export async function transferBed(admissionId, { ward_id, room_id, bed_id }, oldBedId) {
+  if (backendMode !== 'supabase') throw new Error('Bed transfer requires the live database.')
+  const { error } = await supabase.from('admissions').update({ ward_id, room_id, bed_id }).eq('id', admissionId)
+  if (error) {
+    if (error.code === '23505') throw new Error('That bed already has an active admission — pick another.')
+    throw error
+  }
+  await supabase.from('beds').update({ status: 'Occupied' }).eq('id', bed_id)
+  if (oldBedId && oldBedId !== bed_id) await supabase.from('beds').update({ status: 'Cleaning' }).eq('id', oldBedId)
+  notifyLocalListeners()
+}
+
 export async function setBedStatus(bedId, status) {
   if (backendMode !== 'supabase') return
   const { error } = await supabase.from('beds').update({ status }).eq('id', bedId)
@@ -807,6 +853,21 @@ export async function allocateBed(admissionId, { ward_id, room_id, bed_id, nurse
   }
   await supabase.from('beds').update({ status: 'Occupied' }).eq('id', bed_id)
   notifyLocalListeners()
+}
+
+// Reception re-assigns a patient to a different department — moves them out of
+// the old doctor queue into the new one (the DB trigger mints an APT id if the
+// patient didn't have one yet). Does NOT re-mint an existing appointment id.
+export async function reassignDepartment(checkinId, departmentId) {
+  const updatePayload = { department_id: departmentId, status: STATUS.WAITING_DEPARTMENT }
+  if (backendMode === 'supabase') {
+    const { error } = await supabase.from(TABLE).update(updatePayload).eq('id', checkinId)
+    if (error) throw error
+    notifyLocalListeners()
+    return
+  }
+  const rows = mockRead().map((r) => (r.id === checkinId ? { ...r, ...updatePayload } : r))
+  mockWrite(rows)
 }
 
 // Doctor flags an inpatient ready for discharge → reception does the checkout.
