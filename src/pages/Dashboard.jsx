@@ -13,8 +13,15 @@ import {
   listDepartments,
 } from '../lib/store.js'
 import { autoPrimeVoice, announce, chime } from '../lib/voice.js'
+import { sendIntercom, onIntercom } from '../lib/intercom.js'
 
 const AVG_MINUTES = 5
+
+const minsSince = (iso) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
+const mmss = (iso) => {
+  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+}
 
 export default function Dashboard() {
   const [rows, setRows] = useState([])
@@ -22,6 +29,7 @@ export default function Dashboard() {
   const [, forceTick] = useState(0)
   const seenIds = useRef(null)
 
+  const [ring, setRing] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
   const [forwardPatient, setForwardPatient] = useState(null)
   const [departments, setDepartments] = useState([])
@@ -36,6 +44,18 @@ export default function Dashboard() {
   useEffect(() => {
     const t = setInterval(() => forceTick((n) => n + 1), 1000)
     return () => clearInterval(t)
+  }, [])
+
+  // Intercom listener: Doctor calls Reception
+  useEffect(() => {
+    return onIntercom((msg) => {
+      if (msg.type === 'call_reception') {
+        setRing(msg)
+        chime()
+        announce(`${msg.from || 'OPD Doctor'} is calling reception desk`)
+        setTimeout(() => setRing(null), 15000)
+      }
+    })
   }, [])
 
   useEffect(() => {
@@ -67,13 +87,27 @@ export default function Dashboard() {
     return unsub
   }, [])
 
+  const deptMap = useMemo(() => new Map(departments.map((d) => [d.id, d.name])), [departments])
+
+  const rowsWithDept = useMemo(() => {
+    return rows.map((r) => ({
+      ...r,
+      department_name: r.department_name || (r.department_id ? deptMap.get(r.department_id) : null),
+    }))
+  }, [rows, deptMap])
+
   // Reception only sees patients who need reception / skipped department selection
   const receptionQueue = useMemo(() => {
-    const unassigned = rows.filter(
+    const unassigned = rowsWithDept.filter(
       (r) => r.status === STATUS.WAITING_RECEPTION || r.status === STATUS.WAITING
     )
     return sortQueue(unassigned)
-  }, [rows])
+  }, [rowsWithDept])
+
+  // Patients currently in consultation in doctor rooms
+  const inConsult = useMemo(() => {
+    return rowsWithDept.filter((r) => r.status === STATUS.IN_CONSULT)
+  }, [rowsWithDept])
 
   function callNextPatient() {
     if (receptionQueue.length === 0) return
@@ -128,8 +162,27 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-5 py-6">
-        <div className="fade-up">
+      {/* Incoming Call Ring Banner */}
+      {ring && (
+        <div className="bg-amber-500 text-white ring-blink shadow-lg animate-bounce">
+          <div className="max-w-6xl mx-auto px-5 py-3 flex items-center justify-between">
+            <span className="font-bold text-lg flex items-center gap-2">
+              <span className="bell-shake">🔔</span>
+              {ring.from || 'OPD Doctor'} is calling Reception Desk!
+            </span>
+            <button
+              onClick={() => setRing(null)}
+              className="rounded-xl bg-white/25 px-4 py-1.5 text-sm font-bold hover:bg-white/40 transition"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      <main className="max-w-6xl mx-auto px-5 py-6 space-y-8">
+        {/* Section 1: Unassigned Reception Queue */}
+        <section className="fade-up">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-slate-900">Unassigned Reception Queue</h1>
@@ -137,14 +190,14 @@ export default function Dashboard() {
                 Patients who skipped department selection or requested assistance at the counter.
               </p>
             </div>
-            <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-800">
+            <span className="rounded-full bg-amber-100 px-3.5 py-1 text-sm font-bold text-amber-800">
               {receptionQueue.length} Waiting at Desk
             </span>
           </div>
 
           <div className="mt-4">
             {receptionQueue.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-12 text-center">
+              <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
                 <p className="text-base font-bold text-slate-700">No patients waiting at reception</p>
                 <p className="mt-1 text-xs text-slate-400">
                   Patients who scan the QR code and select a department bypass reception and go straight to doctor OPD queues.
@@ -175,7 +228,65 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-        </div>
+        </section>
+
+        {/* Section 2: In Consultation (Live in Doctor OPD Rooms) */}
+        <section className="fade-up">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">In Consultation (OPD Rooms)</h2>
+              <p className="text-sm text-slate-500">
+                Patients currently inside OPD rooms being examined by doctors.
+              </p>
+            </div>
+            <span className="rounded-full bg-sky-100 px-3.5 py-1 text-sm font-bold text-sky-800">
+              {inConsult.length} Active Consultations
+            </span>
+          </div>
+
+          <div>
+            {inConsult.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
+                No active consultations in progress.
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {inConsult.map((row) => (
+                  <div
+                    key={row.id}
+                    className="rounded-2xl border-2 border-sky-200 bg-white p-5 shadow-sm flex items-start justify-between gap-3"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-bold text-slate-900">{row.name}</span>
+                        {row.priority === 'emergency' && (
+                          <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase">
+                            Emergency
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs font-semibold text-sky-700 mt-1">
+                        🏥 {row.department_name || 'General OPD'}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {row.age ? `${row.age} yrs` : ''} {row.gender ? `· ${row.gender}` : ''}
+                      </p>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="inline-block rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-bold text-sky-800 uppercase">
+                        In Consult
+                      </span>
+                      <p className="font-mono text-sm font-bold text-slate-700 mt-1">
+                        {mmss(row.check_in_time)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
       </main>
 
       {showAdd && <AddPatientModal onClose={() => setShowAdd(false)} />}
