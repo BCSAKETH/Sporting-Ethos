@@ -3,6 +3,7 @@ import { Text, View, Pressable } from "react-native";
 import { ScreenContainer } from "../../components/ui/ScreenContainer";
 import { Card } from "../../components/ui/Card";
 import CalledAlert from "../../components/CalledAlert";
+import LabOrders from "../../components/LabOrders";
 import { useAuth } from "../../features/auth/useAuth";
 import { useActiveMedications } from "../../features/medications/useMedications";
 import { bmiCategory } from "../../utils/health";
@@ -49,6 +50,9 @@ export default function DashboardScreen() {
 
       {/* Active OPD Medications */}
       <ActiveMedicationsCard />
+
+      {/* Doctor-ordered lab tests — schedule at clinic or upload external report */}
+      <LabOrders />
     </ScreenContainer>
   );
 }
