@@ -173,13 +173,16 @@ const MOCK_DOCTORS_BY_CODE = {
 
 export async function listDepartments() {
   if (backendMode === 'supabase') {
-    const { data, error } = await supabase
-      .from('departments')
-      .select('id, name, department_type')
-      .eq('is_active', true)
-      .order('name')
-    if (error) throw error
-    return data && data.length ? data : MOCK_DEPARTMENTS
+    try {
+      const { data, error } = await supabase
+        .from('departments')
+        .select('id, name, department_type')
+        .eq('is_active', true)
+        .order('name')
+      if (!error && data && data.length) return data
+    } catch (e) {
+      console.warn('Failed to fetch departments from Supabase, using mock fallback:', e)
+    }
   }
   return MOCK_DEPARTMENTS
 }

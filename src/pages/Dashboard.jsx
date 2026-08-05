@@ -215,23 +215,16 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3">
                 {receptionQueue.map((row, i) => (
-                  <div key={row.id} className="fade-up flex items-center gap-3">
-                    <div className="flex-1">
-                      <QueueCard
-                        row={row}
-                        position={i + 1}
-                        isNew={flashIds.has(row.id)}
-                        eta={`${Math.max(0, i * AVG_MINUTES)} min`}
-                        onStatus={changeStatus}
-                        onPriority={setPriority}
-                      />
-                    </div>
-                    <button
-                      onClick={() => setForwardPatient(row)}
-                      className="rounded-2xl bg-emerald-600 px-5 py-4 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 active:scale-95 transition shrink-0"
-                    >
-                      ➡ Forward to Doctor
-                    </button>
+                  <div key={row.id} className="fade-up">
+                    <QueueCard
+                      row={row}
+                      position={i + 1}
+                      isNew={flashIds.has(row.id)}
+                      eta={`${Math.max(0, i * AVG_MINUTES)} min`}
+                      onStatus={changeStatus}
+                      onPriority={setPriority}
+                      onForward={(r) => setForwardPatient(r)}
+                    />
                   </div>
                 ))}
               </div>

@@ -8,15 +8,19 @@ function since(iso) {
 }
 
 const DOT = {
-  [STATUS.WAITING]: 'bg-purple-500',
-  [STATUS.IN_CONSULT]: 'bg-purple-700',
-  [STATUS.DONE]: 'bg-purple-300',
-  [STATUS.LEFT]: 'bg-purple-400',
-  [STATUS.NO_SHOW]: 'bg-purple-400',
-  [STATUS.PAUSED]: 'bg-purple-800',
+  [STATUS.WAITING]: 'bg-amber-500',
+  [STATUS.WAITING_RECEPTION]: 'bg-amber-500',
+  [STATUS.WAITING_DEPARTMENT]: 'bg-sky-500',
+  [STATUS.IN_CONSULT]: 'bg-emerald-600',
+  [STATUS.DONE]: 'bg-slate-400',
+  [STATUS.LEFT]: 'bg-rose-400',
+  [STATUS.NO_SHOW]: 'bg-rose-400',
+  [STATUS.PAUSED]: 'bg-slate-400',
 }
 const STATUS_LABEL = {
-  [STATUS.WAITING]: 'Waiting',
+  [STATUS.WAITING]: 'Waiting Desk',
+  [STATUS.WAITING_RECEPTION]: 'Waiting Desk',
+  [STATUS.WAITING_DEPARTMENT]: 'Waiting OPD',
   [STATUS.IN_CONSULT]: 'In consult',
   [STATUS.DONE]: 'Done',
   [STATUS.LEFT]: 'Left',
@@ -24,59 +28,70 @@ const STATUS_LABEL = {
   [STATUS.PAUSED]: 'Paused',
 }
 
-export default function QueueCard({ row, position, isNew, eta, onStatus, onPriority }) {
+export default function QueueCard({ row, position, isNew, eta, onStatus, onPriority, onForward }) {
   const emergency = row.priority === 'emergency'
   const faded = row.status === STATUS.DONE || row.status === STATUS.LEFT || row.status === STATUS.NO_SHOW
+  const isWaiting = row.status === STATUS.WAITING || row.status === STATUS.WAITING_RECEPTION || row.status === STATUS.WAITING_DEPARTMENT || row.status === STATUS.PAUSED
 
   return (
     <div
       className={`rounded-2xl border bg-white p-4.5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 ${
-        emergency ? 'border-purple-300 ring-2 ring-purple-200 bg-purple-50/20' : 'border-purple-100/80'
+        emergency ? 'border-rose-300 ring-2 ring-rose-200 bg-rose-50/20' : 'border-slate-200'
       } ${isNew ? 'flash-in' : ''} ${faded ? 'opacity-75' : ''}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           {position != null && (
-            <div className="shrink-0 h-9 w-9 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold shadow-md shadow-purple-600/20">
+            <div className="shrink-0 h-9 w-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold shadow-md shadow-emerald-600/20">
               {position}
             </div>
           )}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-purple-950 truncate">{row.name}</span>
+              <span className="font-bold text-slate-900 truncate">{row.name}</span>
               {emergency && (
-                <span className="shrink-0 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-800 uppercase tracking-wide">
+                <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800 uppercase tracking-wide">
                   Emergency
                 </span>
               )}
               {row.department_name && (
-                <span className="shrink-0 rounded-full bg-purple-50 border border-purple-200/60 px-2 py-0.5 text-[10px] font-semibold text-purple-700">
+                <span className="shrink-0 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
                   {row.department_name}
                 </span>
               )}
             </div>
-            <div className="text-xs text-purple-600/80 font-medium">
+            <div className="text-xs text-slate-500 font-medium mt-0.5">
               {row.appointment_id || 'walk-in'} · {since(row.check_in_time)}
               {eta ? ` · ~${eta}` : ''}
             </div>
           </div>
         </div>
-        <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700">
-          <span className={`h-1.5 w-1.5 rounded-full ${DOT[row.status]}`} />
-          {STATUS_LABEL[row.status]}
+        <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+          <span className={`h-2 w-2 rounded-full ${DOT[row.status] || 'bg-slate-400'}`} />
+          {STATUS_LABEL[row.status] || 'Waiting'}
         </span>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        {(row.status === STATUS.WAITING || row.status === STATUS.PAUSED) && (
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {isWaiting && (
           <>
             <Btn tone="primary" onClick={() => onStatus(row.id, STATUS.IN_CONSULT)}>
               Call next
             </Btn>
-            {row.status === STATUS.WAITING ? (
-              <Btn onClick={() => onStatus(row.id, STATUS.PAUSED)}>Pause</Btn>
-            ) : (
+
+            {onForward && (
+              <button
+                onClick={() => onForward(row)}
+                className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-95 transition"
+              >
+                ➡ Forward to Doctor
+              </button>
+            )}
+
+            {row.status === STATUS.PAUSED ? (
               <Btn onClick={() => onStatus(row.id, STATUS.WAITING)}>Resume</Btn>
+            ) : (
+              <Btn onClick={() => onStatus(row.id, STATUS.PAUSED)}>Pause</Btn>
             )}
             <Btn onClick={() => onStatus(row.id, STATUS.LEFT)}>Left</Btn>
             <Btn
@@ -100,9 +115,9 @@ export default function QueueCard({ row, position, isNew, eta, onStatus, onPrior
 
 function Btn({ tone = 'default', onClick, children }) {
   const tones = {
-    primary: 'bg-purple-600 text-white hover:bg-purple-700 border-purple-600 shadow-sm shadow-purple-600/20 active:scale-95',
-    danger: 'bg-purple-100 text-purple-900 border-purple-300 hover:bg-purple-200 active:scale-95',
-    default: 'bg-white text-purple-900 border-purple-200/80 hover:bg-purple-50 active:scale-95',
+    primary: 'bg-emerald-600 text-white hover:bg-emerald-700 border-emerald-600 shadow-sm shadow-emerald-600/20 active:scale-95',
+    danger: 'bg-rose-100 text-rose-800 border-rose-200 hover:bg-rose-200 active:scale-95',
+    default: 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 active:scale-95',
   }
   return (
     <button

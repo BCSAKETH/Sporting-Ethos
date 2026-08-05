@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Logo from '../components/Logo.jsx'
+import { getStaffSession, clearStaffSession } from './AccessGate.jsx'
 import {
+  subscribe,
   findCheckinByAppointment,
   subscribeMedicines,
   addMedicine,
@@ -11,66 +13,71 @@ import {
 } from '../lib/store.js'
 import { downloadBillPDF, makeBillNo, rupees } from '../lib/bill.js'
 
-const PHARMACY_CODE = import.meta.env.VITE_PHARMACY_CODE || 'pharmacy'
-const AUTH_KEY = 'ethos_pharmacy_authed'
-
 export default function Pharmacy() {
-  const [authed, setAuthed] = useState(() => localStorage.getItem(AUTH_KEY) === '1')
-  if (!authed) return <Gate onOk={() => setAuthed(true)} />
-  return <Console onLogout={() => { localStorage.removeItem(AUTH_KEY); setAuthed(false) }} />
+  const session = getStaffSession()
+  return <Console pharmacist={session} onLogout={clearStaffSession} />
 }
 
-function Gate({ onOk }) {
-  const [code, setCode] = useState('')
-  const [err, setErr] = useState('')
-  function submit(e) {
-    e.preventDefault()
-    if (code.trim() === PHARMACY_CODE) { localStorage.setItem(AUTH_KEY, '1'); onOk() }
-    else setErr('Incorrect code.')
-  }
-  return (
-    <div className="min-h-full flex flex-col items-center justify-center px-5 bg-[#FAF8F5]">
-      <div className="w-full max-w-sm card p-6 bg-white border border-purple-100/70 shadow-xl">
-        <div className="flex justify-center mb-4"><Logo /></div>
-        <h1 className="text-center text-xl font-bold text-purple-950">Pharmacy</h1>
-        <p className="text-center text-sm text-purple-600/80 mt-1">Enter the pharmacy access code.</p>
-        <form onSubmit={submit} className="mt-5 space-y-3">
-          <input autoFocus type="password" value={code} onChange={(e) => { setCode(e.target.value); setErr('') }}
-            placeholder="Access code" className="input text-center tracking-widest bg-white" />
-          {err && <p className="text-sm text-purple-600 text-center font-semibold">{err}</p>}
-          <button type="submit" className="w-full rounded-xl bg-purple-600 py-3 font-semibold text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 active:scale-95 transition">Enter</button>
-        </form>
-        <Link to="/" className="mt-4 block text-center text-xs text-purple-400 font-medium hover:text-purple-700">← Reception dashboard</Link>
-      </div>
-    </div>
-  )
-}
-
-function Console({ onLogout }) {
+function Console({ pharmacist, onLogout }) {
   const [tab, setTab] = useState('counter')
   const [meds, setMeds] = useState([])
+  const [checkins, setCheckins] = useState([])
+
   useEffect(() => subscribeMedicines(setMeds), [])
+  useEffect(() => subscribe(setCheckins), [])
+
+  const pendingPrescriptions = useMemo(() => {
+    return checkins.filter(
+      (r) => (r.notes?.prescriptions && r.notes.prescriptions.length > 0) && !r.pharmacy?.paid
+    )
+  }, [checkins])
 
   return (
-    <div className="min-h-full bg-[#FAF8F5]">
-      <header className="bg-[#FAF8F5] border-b border-purple-200/60 sticky top-0 z-40 backdrop-blur-md">
-        <div className="max-w-5xl mx-auto px-5 h-16 flex items-center justify-between gap-3">
+    <div className="min-h-full bg-slate-50">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+        <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Logo />
-            <span className="rounded-full bg-purple-100/80 border border-purple-200/60 px-2.5 py-1 text-xs font-bold text-purple-800">Pharmacy</span>
+            <span className="rounded-md bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800 uppercase tracking-wider">
+              Pharmacy &amp; Dawa Vitran
+            </span>
           </div>
-          <nav className="flex items-center gap-1 rounded-xl bg-purple-100/70 p-1 border border-purple-200/40">
-            <Tab active={tab === 'counter'} onClick={() => setTab('counter')}>Counter</Tab>
-            <Tab active={tab === 'inventory'} onClick={() => setTab('inventory')}>Inventory</Tab>
+
+          <nav className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 border border-slate-200">
+            <Tab active={tab === 'counter'} onClick={() => setTab('counter')}>
+              Dispense Counter ({pendingPrescriptions.length})
+            </Tab>
+            <Tab active={tab === 'inventory'} onClick={() => setTab('inventory')}>
+              Inventory &amp; Batches ({meds.length})
+            </Tab>
           </nav>
-          <div className="flex items-center gap-2">
-            <Link to="/" className="rounded-xl border border-purple-200/80 bg-white px-3 py-2 text-sm font-semibold text-purple-800 hover:bg-purple-50 transition">Reception</Link>
-            <button onClick={onLogout} className="rounded-xl border border-purple-200/80 bg-white px-3 py-2 text-sm font-semibold text-purple-800 hover:bg-purple-50 transition">Lock</button>
+
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-slate-600">
+              {pharmacist?.name || 'Central Pharmacy Staff'}
+            </span>
+            <Link
+              to="/"
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Desk
+            </Link>
+            <button
+              onClick={onLogout}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              🔒 Lock
+            </button>
           </div>
         </div>
       </header>
-      <main className="max-w-5xl mx-auto px-5 py-6">
-        {tab === 'counter' ? <Counter meds={meds} /> : <Inventory meds={meds} />}
+
+      <main className="max-w-6xl mx-auto px-5 py-6">
+        {tab === 'counter' ? (
+          <Counter meds={meds} pendingList={pendingPrescriptions} />
+        ) : (
+          <Inventory meds={meds} />
+        )}
       </main>
     </div>
   )
@@ -78,16 +85,23 @@ function Console({ onLogout }) {
 
 function Tab({ active, onClick, children }) {
   return (
-    <button onClick={onClick} className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${active ? 'bg-purple-600 text-white shadow-sm font-semibold' : 'text-purple-800 hover:bg-purple-200/40'}`}>
+    <button
+      onClick={onClick}
+      className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
+        active ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200/60'
+      }`}
+    >
       {children}
     </button>
   )
 }
 
-/* ---- Counter: dispense by appointment ID ---- */
-function firstWord(s) { return String(s).trim().split(/\s+/)[0].toLowerCase() }
+/* ---- Counter: dispense by appointment ID or pending queue ---- */
+function firstWord(s) {
+  return String(s).trim().split(/\s+/)[0].toLowerCase()
+}
 
-function Counter({ meds }) {
+function Counter({ meds, pendingList }) {
   const [appt, setAppt] = useState('')
   const [patient, setPatient] = useState(null)
   const [notFound, setNotFound] = useState(false)
@@ -96,38 +110,66 @@ function Counter({ meds }) {
   const [paidBill, setPaidBill] = useState(null)
   const [add, setAdd] = useState('')
 
-  const prescriptions = patient?.notes?.prescriptions || []
-  const unmatched = useMemo(() => {
-    if (!patient) return []
-    const orderNames = new Set(order.map((o) => o.name.toLowerCase()))
-    return prescriptions.filter((p) => !meds.some((m) => p.toLowerCase().includes(firstWord(m.name)) && orderNames.has(m.name.toLowerCase())))
-  }, [patient, prescriptions, meds, order])
-
-  async function lookup(e) {
-    e?.preventDefault()
-    setNotFound(false); setPaidBill(null); setOrder([]); setPatient(null)
-    const p = await findCheckinByAppointment(appt)
-    if (!p) return setNotFound(true)
+  function selectPatient(p) {
+    setAppt(p.appointment_id || '')
+    setNotFound(false)
+    setPaidBill(null)
     setPatient(p)
-    if (p.pharmacy?.paid) { setPaidBill(p.pharmacy); return }
+
+    if (p.pharmacy?.paid) {
+      setPaidBill(p.pharmacy)
+      setOrder([])
+      return
+    }
+
     const matched = []
     ;(p.notes?.prescriptions || []).forEach((presc) => {
       const med = meds.find((m) => presc.toLowerCase().includes(firstWord(m.name)))
-      if (med && !matched.some((o) => o.medicine_id === med.id)) matched.push({ medicine_id: med.id, name: med.name, price: Number(med.price), qty: 1 })
+      if (med && !matched.some((o) => o.medicine_id === med.id)) {
+        matched.push({ medicine_id: med.id, name: med.name, price: Number(med.price), qty: 1 })
+      } else if (!med) {
+        matched.push({ medicine_id: null, name: presc, price: 0, qty: 1 })
+      }
     })
     setOrder(matched)
   }
 
+  async function lookup(e) {
+    e?.preventDefault()
+    if (!appt.trim()) return
+    setNotFound(false)
+    setPaidBill(null)
+    setOrder([])
+    setPatient(null)
+    const p = await findCheckinByAppointment(appt)
+    if (!p) return setNotFound(true)
+    selectPatient(p)
+  }
+
+  const prescriptions = patient?.notes?.prescriptions || []
+
   const total = order.reduce((s, o) => s + o.price * o.qty, 0)
-  const setQty = (i, d) => setOrder((o) => o.map((it, idx) => idx === i ? { ...it, qty: Math.max(1, it.qty + d) } : it))
+  const setQty = (i, d) =>
+    setOrder((o) => o.map((it, idx) => (idx === i ? { ...it, qty: Math.max(1, it.qty + d) } : it)))
   const removeItem = (i) => setOrder((o) => o.filter((_, idx) => idx !== i))
-  const addMed = (m) => { if (!order.some((o) => o.medicine_id === m.id)) setOrder((o) => [...o, { medicine_id: m.id, name: m.name, price: Number(m.price), qty: 1 }]); setAdd('') }
+  const addMed = (m) => {
+    if (!order.some((o) => o.medicine_id === m.id)) {
+      setOrder((o) => [...o, { medicine_id: m.id, name: m.name, price: Number(m.price), qty: 1 }])
+    }
+    setAdd('')
+  }
 
   async function takePayment() {
     if (!patient || !order.length) return
     setBusy(true)
     try {
-      const bill = { bill_no: makeBillNo(), items: order.map(({ name, price, qty }) => ({ name, price, qty })), total, paid: true, paid_at: new Date().toISOString() }
+      const bill = {
+        bill_no: makeBillNo(),
+        items: order.map(({ name, price, qty }) => ({ name, price, qty })),
+        total,
+        paid: true,
+        paid_at: new Date().toISOString(),
+      }
       await savePharmacyBill(patient.id, bill)
       for (const it of order) {
         if (it.medicine_id) {
@@ -137,7 +179,12 @@ function Counter({ meds }) {
       }
       downloadBillPDF(patient, bill)
       setPaidBill(bill)
-    } catch (e) { console.error(e); alert('Payment failed — see console.') } finally { setBusy(false) }
+    } catch (e) {
+      console.error(e)
+      alert('Dispensing failed. See console.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const searchResults = add.trim()
@@ -145,112 +192,232 @@ function Counter({ meds }) {
     : []
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <div className="card p-6 bg-white border border-purple-100/70 shadow-sm">
-        <h2 className="text-lg font-bold text-purple-950">Dispense by appointment</h2>
-        <form onSubmit={lookup} className="mt-3 flex gap-2">
-          <input value={appt} onChange={(e) => setAppt(e.target.value)} placeholder="e.g. APT-0007" className="input flex-1 uppercase bg-white" />
-          <button className="rounded-xl bg-purple-950 px-5 font-semibold text-white hover:bg-purple-900 shadow-md">Find</button>
-        </form>
+    <div className="grid gap-6 lg:grid-cols-3">
+      {/* Left 1-Col: Live Pending Prescriptions Queue */}
+      <div className="card p-5 bg-white border border-slate-200">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <h2 className="text-base font-bold text-slate-900">Pending OPD Prescriptions</h2>
+          <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
+            {pendingList.length} Ready
+          </span>
+        </div>
 
-        {notFound && <p className="mt-3 text-sm text-purple-600 font-semibold">No patient found for that appointment ID.</p>}
-
-        {patient && (
-          <div className="mt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-bold text-purple-950">{patient.name}</div>
-                <div className="text-xs text-purple-600 font-medium">{patient.appointment_id}{patient.age != null ? ` · ${patient.age}y` : ''}{patient.gender ? ` · ${patient.gender}` : ''}</div>
-              </div>
+        <div className="mt-3 space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
+          {pendingList.length === 0 ? (
+            <div className="py-12 text-center text-xs text-slate-400">
+              No pending doctor e-prescriptions.
             </div>
-
-            {prescriptions.length > 0 && (
-              <div className="mt-3 rounded-xl bg-purple-50/70 border border-purple-200/60 p-3">
-                <div className="text-xs font-bold uppercase tracking-wider text-purple-600">Prescribed in consultation</div>
-                <ul className="mt-1 text-sm text-purple-900 space-y-0.5 font-medium">
-                  {prescriptions.map((p, i) => <li key={i} className="flex gap-2"><span className="text-purple-400">•</span>{p}</li>)}
-                </ul>
-              </div>
-            )}
-            {patient.notes == null && <p className="mt-3 text-sm text-purple-400">No consultation notes yet — add items manually.</p>}
-          </div>
-        )}
+          ) : (
+            pendingList.map((p) => {
+              const isSelected = patient?.id === p.id
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => selectPatient(p)}
+                  className={`w-full text-left rounded-2xl border p-3.5 transition ${
+                    isSelected
+                      ? 'border-emerald-500 bg-emerald-50 shadow-sm ring-1 ring-emerald-300'
+                      : 'border-slate-200 bg-white hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-slate-900">{p.name}</span>
+                    <span className="font-mono text-xs font-bold text-emerald-700">
+                      {p.appointment_id}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {p.notes?.prescriptions?.length || 0} Prescribed Meds
+                  </p>
+                </button>
+              )
+            })
+          )}
+        </div>
       </div>
 
-      {/* Order / bill */}
-      <div className="card p-6 bg-white border border-purple-100/70 shadow-sm">
-        {paidBill ? (
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-purple-100 text-purple-800 px-2.5 py-0.5 text-xs font-bold">PAID</span>
-              <h2 className="text-lg font-bold text-purple-950">Bill {paidBill.bill_no}</h2>
-            </div>
-            <ul className="mt-3 divide-y divide-purple-100/60">
-              {paidBill.items.map((it, i) => (
-                <li key={i} className="flex justify-between py-2 text-sm">
-                  <span className="text-purple-900 font-medium">{it.name} × {it.qty}</span>
-                  <span className="tabular-nums font-semibold text-purple-950">{rupees(it.price * it.qty)}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-3 flex justify-between font-bold text-purple-950 text-lg"><span>Total</span><span className="tabular-nums">{rupees(paidBill.total)}</span></div>
-            <button onClick={() => patient && downloadBillPDF(patient, paidBill)} className="mt-4 w-full rounded-xl bg-purple-600 py-3 font-semibold text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 active:scale-95 transition">⬇ Download bill (PDF)</button>
-          </div>
-        ) : (
-          <div>
-            <h2 className="text-lg font-bold text-purple-950">Order</h2>
-            {!patient ? (
-              <p className="mt-3 text-sm text-purple-400">Find a patient to build their order.</p>
-            ) : (
-              <>
-                {order.length === 0 ? (
-                  <p className="mt-3 text-sm text-purple-400">No items yet. Add medicines below.</p>
-                ) : (
-                  <ul className="mt-3 divide-y divide-purple-100/60">
-                    {order.map((it, i) => (
-                      <li key={i} className="flex items-center gap-3 py-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold text-purple-950 truncate">{it.name}</div>
-                          <div className="text-xs text-purple-500">{rupees(it.price)} each</div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => setQty(i, -1)} className="h-7 w-7 rounded-lg border border-purple-200 text-purple-800 font-bold hover:bg-purple-50">−</button>
-                          <span className="w-6 text-center text-sm tabular-nums font-bold text-purple-950">{it.qty}</span>
-                          <button onClick={() => setQty(i, 1)} className="h-7 w-7 rounded-lg border border-purple-200 text-purple-800 font-bold hover:bg-purple-50">+</button>
-                        </div>
-                        <span className="w-16 text-right text-sm tabular-nums font-bold text-purple-950">{rupees(it.price * it.qty)}</span>
-                        <button onClick={() => removeItem(i)} className="text-purple-300 hover:text-purple-700 font-bold text-lg">×</button>
+      {/* Right 2-Cols: Lookup & Dispense Order */}
+      <div className="lg:col-span-2 grid gap-6 md:grid-cols-2">
+        <div className="card p-5 bg-white border border-slate-200">
+          <h2 className="text-base font-bold text-slate-900">Lookup Patient Ticket</h2>
+          <form onSubmit={lookup} className="mt-3 flex gap-2">
+            <input
+              value={appt}
+              onChange={(e) => setAppt(e.target.value)}
+              placeholder="e.g. APT-0001"
+              className="input flex-1 uppercase font-mono font-bold"
+            />
+            <button className="rounded-xl bg-emerald-600 px-4 font-bold text-white hover:bg-emerald-700 shadow-sm">
+              Find
+            </button>
+          </form>
+
+          {notFound && (
+            <p className="mt-3 text-xs font-semibold text-rose-600">
+              No patient found for that ticket ID.
+            </p>
+          )}
+
+          {patient && (
+            <div className="mt-4 border-t border-slate-100 pt-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-slate-900">{patient.name}</div>
+                  <div className="text-xs text-slate-500 font-medium mt-0.5">
+                    {patient.appointment_id}
+                    {patient.age != null ? ` · ${patient.age} yrs` : ''}
+                    {patient.gender ? ` · ${patient.gender}` : ''}
+                  </div>
+                </div>
+              </div>
+
+              {prescriptions.length > 0 && (
+                <div className="mt-3 rounded-2xl bg-emerald-50 border border-emerald-200 p-3.5">
+                  <div className="text-xs font-bold uppercase tracking-wider text-emerald-800">
+                    Prescribed by Doctor
+                  </div>
+                  <ul className="mt-2 text-xs text-slate-800 space-y-1 font-medium">
+                    {prescriptions.map((p, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="text-emerald-600 font-bold">•</span>
+                        {p}
                       </li>
                     ))}
                   </ul>
-                )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
-                {/* Add medicine */}
-                <div className="mt-3 relative">
-                  <input value={add} onChange={(e) => setAdd(e.target.value)} placeholder="Add medicine…" className="input bg-white" />
-                  {searchResults.length > 0 && (
-                    <div className="absolute z-10 mt-1 w-full rounded-xl border border-purple-200 bg-white shadow-xl">
-                      {searchResults.map((m) => (
-                        <button key={m.id} onClick={() => addMed(m)} className="flex w-full items-center justify-between px-3.5 py-2.5 text-sm hover:bg-purple-50 transition">
-                          <span className="text-purple-950 font-semibold">{m.name}</span>
-                          <span className="text-purple-600 text-xs font-medium">{rupees(m.price)} · {m.stock} in stock</span>
-                        </button>
+        {/* Dispense Order & Receipt */}
+        <div className="card p-5 bg-white border border-slate-200">
+          {paidBill ? (
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-emerald-100 text-emerald-800 px-2.5 py-0.5 text-xs font-bold">
+                  DISPENSED
+                </span>
+                <h2 className="text-lg font-bold text-slate-900">Receipt #{paidBill.bill_no}</h2>
+              </div>
+              <ul className="mt-3 divide-y divide-slate-100">
+                {paidBill.items.map((it, i) => (
+                  <li key={i} className="flex justify-between py-2 text-xs font-medium">
+                    <span className="text-slate-800">
+                      {it.name} × {it.qty}
+                    </span>
+                    <span className="font-mono font-bold text-slate-900">
+                      {rupees(it.price * it.qty)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 flex justify-between font-bold text-slate-900 text-lg border-t border-slate-100 pt-2">
+                <span>Total</span>
+                <span className="tabular-nums">{rupees(paidBill.total)}</span>
+              </div>
+              <button
+                onClick={() => patient && downloadBillPDF(patient, paidBill)}
+                className="mt-4 w-full rounded-2xl bg-emerald-600 py-3 font-bold text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 active:scale-95 transition"
+              >
+                ⬇ Download e-Prescription &amp; Bill (PDF)
+              </button>
+            </div>
+          ) : (
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Pharmacy Dispense Order</h2>
+              {!patient ? (
+                <p className="mt-3 text-xs text-slate-400">Select a pending patient to dispense.</p>
+              ) : (
+                <>
+                  {order.length === 0 ? (
+                    <p className="mt-3 text-xs text-slate-400">No items in order. Add below.</p>
+                  ) : (
+                    <ul className="mt-3 divide-y divide-slate-100 max-h-48 overflow-y-auto pr-1">
+                      {order.map((it, i) => (
+                        <li key={i} className="flex items-center gap-2 py-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-bold text-slate-800 truncate">
+                              {it.name}
+                            </div>
+                            <div className="text-[10px] text-slate-500">{rupees(it.price)} each</div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setQty(i, -1)}
+                              className="h-6 w-6 rounded-lg border border-slate-300 text-slate-800 font-bold hover:bg-slate-100"
+                            >
+                              −
+                            </button>
+                            <span className="w-5 text-center text-xs tabular-nums font-bold text-slate-900">
+                              {it.qty}
+                            </span>
+                            <button
+                              onClick={() => setQty(i, 1)}
+                              className="h-6 w-6 rounded-lg border border-slate-300 text-slate-800 font-bold hover:bg-slate-100"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <span className="w-14 text-right text-xs font-mono font-bold text-slate-900">
+                            {rupees(it.price * it.qty)}
+                          </span>
+                          <button
+                            onClick={() => removeItem(i)}
+                            className="text-slate-400 hover:text-rose-600 font-bold text-base px-1"
+                          >
+                            ×
+                          </button>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   )}
-                </div>
 
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-purple-700">Total</span>
-                  <span className="text-2xl font-bold text-purple-950 tabular-nums">{rupees(total)}</span>
-                </div>
-                <button onClick={takePayment} disabled={busy || !order.length} className="mt-3 w-full rounded-xl bg-purple-600 py-3.5 font-semibold text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 disabled:opacity-60 active:scale-95 transition">
-                  {busy ? 'Processing…' : `Take payment · ${rupees(total)}`}
-                </button>
-              </>
-            )}
-          </div>
-        )}
+                  {/* Add manual medicine */}
+                  <div className="mt-3 relative">
+                    <input
+                      value={add}
+                      onChange={(e) => setAdd(e.target.value)}
+                      placeholder="Add extra medicine…"
+                      className="input w-full text-xs"
+                    />
+                    {searchResults.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+                        {searchResults.map((m) => (
+                          <button
+                            key={m.id}
+                            onClick={() => addMed(m)}
+                            className="flex w-full items-center justify-between px-3.5 py-2 text-xs hover:bg-slate-50 transition"
+                          >
+                            <span className="text-slate-900 font-semibold">{m.name}</span>
+                            <span className="text-slate-500 font-mono">
+                              {rupees(m.price)} · {m.stock} stock
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-2">
+                    <span className="text-xs font-bold text-slate-600">Total Bill</span>
+                    <span className="text-xl font-bold text-slate-900 tabular-nums">
+                      {rupees(total)}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={takePayment}
+                    disabled={busy || !order.length}
+                    className="mt-3 w-full rounded-2xl bg-emerald-600 py-3 font-bold text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 disabled:opacity-50 active:scale-95 transition"
+                  >
+                    {busy ? 'Dispensing…' : `Dispense & Print Bill (${rupees(total)})`}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -262,20 +429,18 @@ function getExpiryStatus(expiryDate) {
   const exp = new Date(expiryDate)
   const now = new Date()
   const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 3600 * 24))
-  if (diffDays < 0) return { label: 'EXPIRED', color: 'bg-purple-200 text-purple-950 border-purple-300 font-bold' }
-  if (diffDays <= 30) return { label: `Expires in ${diffDays}d`, color: 'bg-purple-100 text-purple-800 border-purple-200' }
-  return { label: `Exp: ${expiryDate}`, color: 'bg-purple-50 text-purple-700 border-purple-200/60' }
+  if (diffDays < 0) return { label: 'EXPIRED', color: 'bg-rose-100 text-rose-800 border-rose-200 font-bold' }
+  if (diffDays <= 30) return { label: `Expires in ${diffDays}d`, color: 'bg-amber-100 text-amber-800 border-amber-200' }
+  return { label: `Exp: ${expiryDate}`, color: 'bg-slate-100 text-slate-700 border-slate-200' }
 }
 
 function Inventory({ meds }) {
   const [name, setName] = useState('')
   const [price, setPrice] = useState('')
   const [category, setCategory] = useState('')
-
   const [batchNo, setBatchNo] = useState('')
   const [stock, setStock] = useState('')
   const [expiryDate, setExpiryDate] = useState('')
-
   const [restockMed, setRestockMed] = useState(null)
 
   async function add(e) {
@@ -304,44 +469,48 @@ function Inventory({ meds }) {
   }
 
   return (
-    <div className="space-y-5">
-      <form onSubmit={add} className="card p-5 space-y-4 bg-white border border-purple-100/70 shadow-sm">
-        <div className="text-xs font-bold uppercase tracking-wider text-purple-500">Add New Medicine</div>
+    <div className="space-y-6">
+      <form onSubmit={add} className="card p-5 space-y-4 bg-white border border-slate-200">
+        <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Add New Medicine</div>
         <div className="grid gap-3 sm:grid-cols-4">
           <label className="sm:col-span-2 block">
-            <span className="text-xs font-bold uppercase tracking-wider text-purple-500">Medicine Name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Paracetamol 500mg" className="input mt-1 bg-white" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Medicine Name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Paracetamol 650mg" className="input mt-1 w-full" />
           </label>
           <label className="block">
-            <span className="text-xs font-bold uppercase tracking-wider text-purple-500">Price (₹)</span>
-            <input value={price} inputMode="decimal" onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00" className="input mt-1 bg-white" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Price (₹)</span>
+            <input value={price} inputMode="decimal" onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00" className="input mt-1 w-full" />
           </label>
           <label className="block">
-            <span className="text-xs font-bold uppercase tracking-wider text-purple-500">Category</span>
-            <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Analgesic" className="input mt-1 bg-white" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Category</span>
+            <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Analgesic" className="input mt-1 w-full" />
           </label>
         </div>
 
-        <div className="border-t border-purple-100/60 pt-3">
-          <span className="text-xs font-bold uppercase tracking-wider text-purple-500">Initial Batch Details</span>
+        <div className="border-t border-slate-100 pt-3">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Initial Batch Details</span>
           <div className="mt-2 grid gap-3 sm:grid-cols-3">
-            <input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} placeholder="Batch No (e.g. B-101)" className="input bg-white" />
-            <input value={stock} inputMode="numeric" onChange={(e) => setStock(e.target.value.replace(/[^0-9]/g, ''))} placeholder="Initial Stock Qty" className="input bg-white" />
-            <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="input bg-white" />
+            <input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} placeholder="Batch No (e.g. B-101)" className="input w-full" />
+            <input value={stock} inputMode="numeric" onChange={(e) => setStock(e.target.value.replace(/[^0-9]/g, ''))} placeholder="Initial Stock Qty" className="input w-full" />
+            <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="input w-full" />
           </div>
         </div>
 
         <div className="flex justify-end">
-          <button className="rounded-xl bg-purple-600 px-6 py-2.5 font-semibold text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 active:scale-95 transition">Add Medicine</button>
+          <button className="rounded-xl bg-emerald-600 px-6 py-2.5 font-bold text-white hover:bg-emerald-700 shadow-sm transition">
+            Add Medicine
+          </button>
         </div>
       </form>
 
-      <div className="card overflow-hidden bg-white border border-purple-100/70 shadow-sm">
-        <div className="px-4 py-3 border-b border-purple-100/60 text-xs font-bold uppercase tracking-wider text-purple-500">Inventory &amp; Batches · {meds.length}</div>
+      <div className="card overflow-hidden bg-white border border-slate-200">
+        <div className="px-4 py-3 border-b border-slate-100 text-xs font-bold uppercase tracking-wider text-slate-500">
+          Inventory &amp; Batches · {meds.length} Items
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-purple-500 border-b border-purple-100/60">
+              <tr className="text-left text-xs uppercase tracking-wider text-slate-400 border-b border-slate-100">
                 <th className="px-4 py-2.5 font-bold">Medicine</th>
                 <th className="px-4 py-2.5 font-bold">Price (₹)</th>
                 <th className="px-4 py-2.5 font-bold">Total Stock</th>
@@ -351,54 +520,74 @@ function Inventory({ meds }) {
             </thead>
             <tbody>
               {meds.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-purple-400">No medicines yet — add some above.</td></tr>
-              ) : meds.map((m) => {
-                const batches = m.batches && Array.isArray(m.batches) && m.batches.length > 0
-                  ? m.batches
-                  : [{ batch_no: 'Default', qty: m.stock || 0, expiry_date: m.expiry_date || null }]
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                    No medicines yet — add some above.
+                  </td>
+                </tr>
+              ) : (
+                meds.map((m) => {
+                  const batches = m.batches && Array.isArray(m.batches) && m.batches.length > 0
+                    ? m.batches
+                    : [{ batch_no: 'Default', qty: m.stock || 0, expiry_date: m.expiry_date || null }]
 
-                const totalQty = batches.reduce((s, b) => s + Number(b.qty || 0), 0)
+                  const totalQty = batches.reduce((s, b) => s + Number(b.qty || 0), 0)
 
-                return (
-                  <tr key={m.id} className="border-b border-purple-50/50 last:border-0 hover:bg-purple-50/40 transition">
-                    <td className="px-4 py-3">
-                      <div className="font-bold text-purple-950">{m.name}</div>
-                      <div className="text-xs text-purple-500 font-medium">{m.category || 'Uncategorized'}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <input defaultValue={m.price} onBlur={(e) => updateMedicine(m.id, { price: Number(e.target.value) || 0 })}
-                        className="w-20 rounded-lg border border-purple-200 px-2 py-1 text-sm font-semibold text-purple-950 bg-white" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`font-bold tabular-nums ${totalQty <= 10 ? 'text-purple-600' : 'text-purple-950'}`}>
-                        {totalQty}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1.5">
-                        {batches.map((b, i) => {
-                          const status = getExpiryStatus(b.expiry_date)
-                          return (
-                            <span key={i} className={`inline-flex items-center gap-1 text-xs rounded-lg border px-2 py-1 ${status ? status.color : 'bg-purple-50 border-purple-200/60 text-purple-800'}`}>
-                              <span className="font-semibold">{b.batch_no || `Batch ${i + 1}`}:</span>
-                              <span>{b.qty} units</span>
-                              {status && <span className="font-bold">({status.label})</span>}
-                            </span>
-                          )
-                        })}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right space-x-2">
-                      <button onClick={() => setRestockMed(m)} className="rounded-xl bg-purple-100 border border-purple-200 px-3 py-1 text-xs font-bold text-purple-800 hover:bg-purple-200 transition">
-                        + Restock
-                      </button>
-                      <button onClick={() => deleteMedicine(m.id)} className="text-xs text-purple-400 font-medium hover:text-purple-700">
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
+                  return (
+                    <tr key={m.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition">
+                      <td className="px-4 py-3">
+                        <div className="font-bold text-slate-900">{m.name}</div>
+                        <div className="text-xs text-slate-500 font-medium">{m.category || 'Uncategorized'}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          defaultValue={m.price}
+                          onBlur={(e) => updateMedicine(m.id, { price: Number(e.target.value) || 0 })}
+                          className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-sm font-semibold text-slate-900"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`font-bold tabular-nums ${totalQty <= 10 ? 'text-amber-600' : 'text-slate-900'}`}>
+                          {totalQty}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {batches.map((b, i) => {
+                            const status = getExpiryStatus(b.expiry_date)
+                            return (
+                              <span
+                                key={i}
+                                className={`inline-flex items-center gap-1 text-xs rounded-lg border px-2 py-1 ${
+                                  status ? status.color : 'bg-slate-100 border-slate-200 text-slate-700'
+                                }`}
+                              >
+                                <span className="font-semibold">{b.batch_no || `Batch ${i + 1}`}:</span>
+                                <span>{b.qty} units</span>
+                                {status && <span className="font-bold">({status.label})</span>}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right space-x-2">
+                        <button
+                          onClick={() => setRestockMed(m)}
+                          className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition"
+                        >
+                          + Restock
+                        </button>
+                        <button
+                          onClick={() => deleteMedicine(m.id)}
+                          className="text-xs text-rose-600 font-semibold hover:underline"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -449,34 +638,36 @@ function RestockModal({ medicine, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-purple-950/40 backdrop-blur-sm p-4 animate-fade-in" onClick={onClose}>
-      <div className="w-full max-w-md card p-6 bg-[#FAF8F5] border border-purple-200/70 shadow-2xl animate-pop" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-purple-950">Restock Medicine</h2>
-          <button onClick={onClose} className="text-purple-400 hover:text-purple-700 text-xl font-bold leading-none">×</button>
+          <h2 className="text-lg font-bold text-slate-900">Restock Medicine</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
         </div>
-        <p className="mt-1 text-sm text-purple-800 font-semibold">{medicine.name}</p>
-        <p className="text-xs text-purple-500">Add a new batch with its quantity and expiry date.</p>
+        <p className="mt-1 text-sm text-emerald-800 font-bold">{medicine.name}</p>
+        <p className="text-xs text-slate-500">Add a new batch with quantity and expiry date.</p>
 
         <form onSubmit={handleRestock} className="mt-4 space-y-4">
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-purple-500">Batch Number / Identifier</span>
-            <input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} placeholder="e.g. Batch 2 (B-102)" className="input mt-1 bg-white" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Batch Number / Identifier</span>
+            <input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} placeholder="e.g. Batch 2 (B-102)" className="input mt-1 w-full" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-purple-500">Restock Qty</span>
-              <input value={qty} inputMode="numeric" onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ''))} placeholder="50" className="input mt-1 bg-white" required />
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Restock Qty</span>
+              <input value={qty} inputMode="numeric" onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ''))} placeholder="50" className="input mt-1 w-full" required />
             </div>
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-purple-500">Expiry Date</span>
-              <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="input mt-1 bg-white" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Expiry Date</span>
+              <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="input mt-1 w-full" />
             </div>
           </div>
 
           <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-purple-200 py-2.5 font-semibold text-purple-800 hover:bg-purple-50 transition">Cancel</button>
-            <button type="submit" disabled={busy} className="flex-1 rounded-xl bg-purple-600 py-2.5 font-semibold text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 disabled:opacity-60 transition">
+            <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-slate-200 py-2.5 font-semibold text-slate-600 hover:bg-slate-50">
+              Cancel
+            </button>
+            <button type="submit" disabled={busy} className="flex-1 rounded-xl bg-emerald-600 py-2.5 font-bold text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 disabled:opacity-60 transition">
               {busy ? 'Restocking…' : 'Confirm Restock'}
             </button>
           </div>
