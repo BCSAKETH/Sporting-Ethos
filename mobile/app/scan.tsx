@@ -23,6 +23,10 @@ export default function ScanScreen() {
   useFocusEffect(
     useCallback(() => {
       setIsFocused(true);
+      scannedRef.current = false;
+      setStage("scanning");
+      setScannedUrl(null);
+      setSelectedDeptId(null);
       return () => setIsFocused(false);
     }, [])
   );
