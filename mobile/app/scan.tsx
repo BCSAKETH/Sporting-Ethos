@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { router, useFocusEffect } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity, View, ScrollView } from "react-native";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
-import { CheckCircle2, QrCode, RefreshCw, HelpCircle } from "lucide-react-native";
+import { CheckCircle2, QrCode, RefreshCw, HelpCircle, Building2, Sparkles, ChevronLeft } from "lucide-react-native";
 import { useQuery } from "@tanstack/react-query";
 
 import { ScreenContainer } from "../components/ui/ScreenContainer";
@@ -14,6 +14,8 @@ import { useHospitalQueue, useSpotCheckIn, queuePosition } from "../features/qr-
 import { isCheckinQrValue } from "../utils/qr";
 import { queryKeys } from "../constants/queryKeys";
 import { listDepartments } from "../services/departments.service";
+import { VoiceTextField } from "../components/ui/VoiceTextField";
+import { suggestDepartment, type TriageResult } from "../services/triage.service";
 
 type Stage = "scanning" | "confirming" | "success" | "not-found";
 
@@ -27,6 +29,10 @@ export default function ScanScreen() {
       setStage("scanning");
       setScannedUrl(null);
       setSelectedDeptId(null);
+      setMode("choose");
+      setSymptoms("");
+      setSuggestion(null);
+      setResult(null);
       return () => setIsFocused(false);
     }, [])
   );
@@ -39,6 +45,11 @@ export default function ScanScreen() {
   const [cameraKey, setCameraKey] = useState(0);
 
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
+  const [mode, setMode] = useState<"choose" | "dept" | "ai">("choose");
+  const [symptoms, setSymptoms] = useState("");
+  const [suggestion, setSuggestion] = useState<TriageResult | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [result, setResult] = useState<{ queue_id?: string; appointment_id?: string | null } | null>(null);
   const { data: departments } = useQuery({ queryKey: queryKeys.departments, queryFn: listDepartments });
 
   const { profile } = useAuth();
@@ -64,12 +75,17 @@ export default function ScanScreen() {
     scannedRef.current = false;
     setScannedUrl(null);
     setSelectedDeptId(null);
+    setMode("choose");
+    setSymptoms("");
+    setSuggestion(null);
+    setResult(null);
     setCameraKey((k) => k + 1);
     setStage("scanning");
   }
 
-  async function confirmCheckIn() {
+  async function confirmCheckIn(deptOverride?: string | null) {
     if (!profile) return;
+    const dept = deptOverride !== undefined ? deptOverride : selectedDeptId;
     try {
       const age = profile.date_of_birth
         ? Math.floor((Date.now() - new Date(profile.date_of_birth).getTime()) / (365.25 * 24 * 3600 * 1000))
@@ -79,16 +95,31 @@ export default function ScanScreen() {
         patientId: profile.id,
         hospitalId: hospital?.id ?? null,
         fullName: profile.full_name,
-        departmentId: selectedDeptId,
+        departmentId: dept,
         age: age,
         gender: profile.gender,
         phone: profile.phone,
       });
       setCheckinId(checkin.id);
+      setResult({
+        queue_id: (checkin as { queue_id?: string }).queue_id,
+        appointment_id: (checkin as { appointment_id?: string | null }).appointment_id,
+      });
       setStage("success");
-    } catch (err: any) {
+    } catch (err) {
       console.error("Checkin submission failed:", err);
       resetScanner();
+    }
+  }
+
+  async function runTriage() {
+    setAnalyzing(true);
+    setSuggestion(null);
+    try {
+      const list = (departments ?? []).map((d) => ({ id: d.id, name: d.name }));
+      setSuggestion(await suggestDepartment(symptoms, list));
+    } finally {
+      setAnalyzing(false);
     }
   }
 
@@ -193,70 +224,72 @@ export default function ScanScreen() {
             <Text className="text-center text-xs text-slate-400">Patient: {profile?.full_name}</Text>
           </Card>
 
-          <Text className="text-base font-bold text-slate-900 mt-2">Select OPD Department</Text>
-          <Text className="text-xs text-slate-500 -mt-2">
-            Choosing a department sends you directly to the doctor&apos;s queue.
-          </Text>
-
-          {/* Help Desk Option */}
-          <TouchableOpacity
-            onPress={() => setSelectedDeptId(null)}
-            activeOpacity={0.8}
-            className={`p-4 rounded-2xl border flex-row items-center gap-3 ${
-              selectedDeptId === null ? "bg-amber-50 border-amber-500 shadow-sm" : "bg-white border-slate-200"
-            }`}
-          >
-            <View className="rounded-full bg-amber-100 p-2.5">
-              <HelpCircle size={22} color="#b45309" />
+          {mode === "choose" && (
+            <View className="gap-3">
+              <Text className="text-base font-bold text-slate-900 mt-2">How would you like to proceed?</Text>
+              <OptionCard tint="emerald" icon={<Building2 size={22} color="#047857" />} title="Pick a department" subtitle="I know which department I need" onPress={() => setMode("dept")} />
+              <OptionCard tint="purple" icon={<Sparkles size={22} color="#7c3aed" />} title="AI Triage — not sure?" subtitle="Describe your symptoms and we'll suggest a department" onPress={() => setMode("ai")} />
+              <OptionCard tint="amber" icon={<HelpCircle size={22} color="#b45309" />} title="Skip — go to Reception" subtitle="Get a queue token; reception will guide you" onPress={() => confirmCheckIn(null)} />
             </View>
-            <View className="flex-1">
-              <Text className="font-bold text-sm text-slate-900">I don&apos;t know / Need Help</Text>
-              <Text className="text-xs text-slate-500">Go to Reception Help Desk for assistance</Text>
-            </View>
-            {selectedDeptId === null && (
-              <View className="h-5 w-5 rounded-full bg-amber-600 items-center justify-center">
-                <Text className="text-white text-xs font-bold">✓</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          )}
 
-          {/* OPD Department List */}
-          <View className="gap-2.5">
-            {opdDepartments.map((dept) => {
-              const isSelected = selectedDeptId === dept.id;
-              return (
-                <TouchableOpacity
-                  key={dept.id}
-                  onPress={() => setSelectedDeptId(dept.id)}
-                  activeOpacity={0.8}
-                  className={`p-4 rounded-2xl border flex-row items-center justify-between ${
-                    isSelected ? "bg-emerald-50 border-emerald-500 shadow-sm" : "bg-white border-slate-200"
-                  }`}
-                >
-                  <View className="flex-1 pr-2">
-                    <Text className="font-bold text-sm text-slate-900">{dept.name}</Text>
-                    {dept.description && (
-                      <Text className="text-xs text-slate-500 mt-0.5" numberOfLines={1}>
-                        {dept.description}
-                      </Text>
-                    )}
-                  </View>
-                  {isSelected && (
-                    <View className="h-5 w-5 rounded-full bg-emerald-600 items-center justify-center">
-                      <Text className="text-white text-xs font-bold">✓</Text>
+          {mode === "dept" && (
+            <View className="gap-2.5">
+              <BackRow onPress={() => setMode("choose")} />
+              <Text className="text-base font-bold text-slate-900">Select OPD Department</Text>
+              {opdDepartments.map((dept) => {
+                const isSelected = selectedDeptId === dept.id;
+                return (
+                  <TouchableOpacity
+                    key={dept.id}
+                    onPress={() => setSelectedDeptId(dept.id)}
+                    activeOpacity={0.8}
+                    className={`p-4 rounded-2xl border flex-row items-center justify-between ${
+                      isSelected ? "bg-emerald-50 border-emerald-500 shadow-sm" : "bg-white border-slate-200"
+                    }`}
+                  >
+                    <View className="flex-1 pr-2">
+                      <Text className="font-bold text-sm text-slate-900">{dept.name}</Text>
+                      {dept.description ? (
+                        <Text className="text-xs text-slate-500 mt-0.5" numberOfLines={1}>{dept.description}</Text>
+                      ) : null}
                     </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+                    {isSelected && (
+                      <View className="h-5 w-5 rounded-full bg-emerald-600 items-center justify-center">
+                        <Text className="text-white text-xs font-bold">✓</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+              <Button label="Confirm & Join Department Queue" className="mt-2 w-full" onPress={() => confirmCheckIn()} loading={spotCheckIn.isPending} disabled={!selectedDeptId} />
+            </View>
+          )}
 
-          <Button
-            label={selectedDeptId ? "Confirm & Join Department Queue" : "Confirm & Go to Help Desk"}
-            className="mt-4 w-full"
-            onPress={confirmCheckIn}
-            loading={spotCheckIn.isPending}
-          />
+          {mode === "ai" && (
+            <View className="gap-3">
+              <BackRow onPress={() => { setMode("choose"); setSuggestion(null); }} />
+              <Text className="text-base font-bold text-slate-900">Describe your symptoms</Text>
+              <Text className="text-xs text-slate-500 -mt-1">Type or tap the mic. e.g. &quot;chest pain and breathlessness since morning&quot;.</Text>
+              <VoiceTextField value={symptoms} onChangeText={setSymptoms} multiline placeholder="How are you feeling?" />
+              <Button label={analyzing ? "Analyzing…" : "Analyze symptoms"} onPress={runTriage} loading={analyzing} disabled={!symptoms.trim()} />
+
+              {suggestion && (
+                <Card className="gap-2 border border-purple-200">
+                  <Text className="text-xs font-semibold uppercase tracking-wider text-purple-500">Suggested department</Text>
+                  <Text className="text-lg font-bold text-slate-900">{suggestion.departmentName}</Text>
+                  <Text className="text-sm text-slate-600">{suggestion.reason}</Text>
+                  {suggestion.departmentId ? (
+                    <Button label={`Confirm — ${suggestion.departmentName}`} className="mt-1 w-full" onPress={() => confirmCheckIn(suggestion.departmentId)} loading={spotCheckIn.isPending} />
+                  ) : (
+                    <Button label="Go to Reception Help Desk" className="mt-1 w-full" onPress={() => confirmCheckIn(null)} loading={spotCheckIn.isPending} />
+                  )}
+                  <Button label="Pick a department myself" variant="ghost" onPress={() => setMode("dept")} />
+                </Card>
+              )}
+            </View>
+          )}
+
           <Button label="Cancel" variant="ghost" onPress={resetScanner} />
         </View>
       </ScreenContainer>
@@ -277,10 +310,68 @@ export default function ScanScreen() {
           ) : (
             <Text className="text-sm text-slate-500">You&apos;ll be called shortly at reception.</Text>
           )}
+
+          {result?.queue_id ? (
+            <View className="mt-3 flex-row flex-wrap items-center justify-center gap-2">
+              <View className="rounded-full bg-emerald-100 px-3 py-1">
+                <Text className="text-xs font-bold text-emerald-800">Token {result.queue_id}</Text>
+              </View>
+              {result?.appointment_id ? (
+                <View className="rounded-full bg-purple-100 px-3 py-1">
+                  <Text className="text-xs font-bold text-purple-800">Appt {result.appointment_id}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
           <Button label="Done" className="mt-6 w-full" onPress={() => router.replace("/(tabs)")} />
         </Card>
       </View>
     </ScreenContainer>
+  );
+}
+
+const TINTS = {
+  emerald: { bg: "bg-emerald-100", border: "border-emerald-200" },
+  purple: { bg: "bg-purple-100", border: "border-purple-200" },
+  amber: { bg: "bg-amber-100", border: "border-amber-200" },
+} as const;
+
+function OptionCard({
+  icon,
+  title,
+  subtitle,
+  tint,
+  onPress,
+}: {
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+  tint: keyof typeof TINTS;
+  onPress: () => void;
+}) {
+  const t = TINTS[tint];
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      className={`p-4 rounded-2xl border ${t.border} bg-white flex-row items-center gap-3 shadow-sm`}
+    >
+      <View className={`rounded-full ${t.bg} p-3`}>{icon}</View>
+      <View className="flex-1">
+        <Text className="font-bold text-sm text-slate-900">{title}</Text>
+        <Text className="text-xs text-slate-500 mt-0.5">{subtitle}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function BackRow({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.7} className="flex-row items-center gap-1 self-start py-1">
+      <ChevronLeft size={18} color="#64748b" />
+      <Text className="text-sm font-semibold text-slate-500">Back</Text>
+    </TouchableOpacity>
   );
 }
 

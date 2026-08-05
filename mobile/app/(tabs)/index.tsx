@@ -1,9 +1,7 @@
 import { router } from "expo-router";
 import { Text, View, Pressable } from "react-native";
-import { ChevronRight } from "lucide-react-native";
 import { ScreenContainer } from "../../components/ui/ScreenContainer";
 import { Card } from "../../components/ui/Card";
-import Logo from "../../components/Logo";
 import { useAuth } from "../../features/auth/useAuth";
 import { useActiveMedications } from "../../features/medications/useMedications";
 import { bmiCategory } from "../../utils/health";
@@ -15,29 +13,26 @@ export default function DashboardScreen() {
 
   return (
     <ScreenContainer>
-      {/* Top Clickable Profile Header Bar */}
+      {/* Top bar: greeting + name on the left, profile button on the right */}
       <View className="flex-row items-center justify-between py-2 border-b border-slate-100 pb-3">
+        <View className="flex-1 pr-3">
+          <Text className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Welcome back
+          </Text>
+          <Text className="text-2xl font-extrabold text-slate-900" numberOfLines={1}>
+            {profile?.full_name ?? "Patient"}
+          </Text>
+        </View>
+
         <Pressable
           onPress={() => router.push("/(tabs)/profile")}
-          className="flex-row items-center gap-3 active:opacity-70 flex-1 pr-2"
+          className="active:opacity-70"
+          accessibilityLabel="Open profile"
         >
-          <View className="h-11 w-11 rounded-full bg-emerald-600 items-center justify-center shadow-sm">
+          <View className="h-12 w-12 rounded-full bg-emerald-600 items-center justify-center shadow-sm border-2 border-white">
             <Text className="text-white font-bold text-lg">{initialLetter}</Text>
           </View>
-          <View className="flex-1">
-            <View className="flex-row items-center gap-1">
-              <Text className="text-base font-bold text-slate-900">
-                {profile?.full_name ?? "Patient"}
-              </Text>
-              <ChevronRight size={18} color="#64748b" />
-            </View>
-            <Text className="text-xs font-semibold text-slate-500">
-              View &amp; Edit Profile
-            </Text>
-          </View>
         </Pressable>
-
-        <Logo size={28} />
       </View>
 
       {/* Health Summary */}
