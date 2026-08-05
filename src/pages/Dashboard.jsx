@@ -35,6 +35,7 @@ export default function Dashboard() {
   const [showQR, setShowQR] = useState(false)
   const [forwardPatient, setForwardPatient] = useState(null)
   const [departments, setDepartments] = useState([])
+  const [emgQuery, setEmgQuery] = useState('')
 
   const session = getStaffSession()
 
@@ -113,6 +114,17 @@ export default function Dashboard() {
   const inConsult = useMemo(() => {
     return rowsWithDept.filter((r) => r.status === STATUS.IN_CONSULT)
   }, [rowsWithDept])
+
+  // Emergency lookup — match a patient by Queue ID (Q-0001) or APT id.
+  const emgMatch = useMemo(() => {
+    const q = emgQuery.trim().toUpperCase()
+    if (!q) return null
+    return (
+      rowsWithDept.find(
+        (r) => (r.queue_id || '').toUpperCase() === q || (r.appointment_id || '').toUpperCase() === q
+      ) || null
+    )
+  }, [emgQuery, rowsWithDept])
 
   const [calledIds, setCalledIds] = useState(new Set())
 
@@ -217,6 +229,47 @@ export default function Dashboard() {
       )}
 
       <main className="max-w-6xl mx-auto px-5 py-6 space-y-8">
+        {/* Emergency Priority: find by Queue ID and bump to #1 */}
+        <section className="fade-up">
+          <div className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-bold text-rose-800">🚨 Emergency Priority</span>
+              <input
+                value={emgQuery}
+                onChange={(e) => setEmgQuery(e.target.value)}
+                placeholder="Search Queue ID (Q-0001) or Ticket (APT-0001)…"
+                className="input flex-1 uppercase font-mono text-sm bg-white"
+              />
+            </div>
+            {emgQuery.trim() && !emgMatch && (
+              <p className="mt-2 text-xs font-semibold text-rose-600">No active patient with that ID.</p>
+            )}
+            {emgMatch && (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-white border border-rose-200 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 truncate">{emgMatch.name}</span>
+                    {emgMatch.priority === 'emergency' && (
+                      <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase">Emergency</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500 font-medium">
+                    {emgMatch.queue_id || emgMatch.appointment_id} · {emgMatch.department_name || 'Unassigned'}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setPriority(emgMatch.id, emgMatch.priority === 'emergency' ? 'normal' : 'emergency')}
+                  className={`shrink-0 rounded-xl px-4 py-2 text-xs font-bold text-white shadow-sm transition ${
+                    emgMatch.priority === 'emergency' ? 'bg-slate-500 hover:bg-slate-600' : 'bg-rose-600 hover:bg-rose-700'
+                  }`}
+                >
+                  {emgMatch.priority === 'emergency' ? 'Clear Emergency' : '🚨 Bump to #1'}
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* Section 1: Unassigned Reception Queue */}
         <section className="fade-up">
           <div className="mb-4 flex items-center justify-between">

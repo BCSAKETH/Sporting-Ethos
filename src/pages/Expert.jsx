@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Logo from '../components/Logo.jsx'
 import ConsultationPanel from '../components/ConsultationPanel.jsx'
+import WardManagement from '../components/WardManagement.jsx'
 import { subscribe, updateStatus, setPriority, sortQueue, isActive, STATUS, findDoctorByCode } from '../lib/store.js'
 import { autoPrimeVoice, announce, chime } from '../lib/voice.js'
 import { sendIntercom, onIntercom } from '../lib/intercom.js'
@@ -24,6 +25,7 @@ function Console({ doctor, onLogout }) {
   const [rows, setRows] = useState([])
   const [ring, setRing] = useState(null)
   const [sent, setSent] = useState(false)
+  const [tab, setTab] = useState('opd') // 'opd' | 'wards'
   const [, tick] = useState(0)
 
   useEffect(() => autoPrimeVoice(), [])
@@ -70,6 +72,19 @@ function Console({ doctor, onLogout }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 rounded-xl bg-purple-100/70 p-1 mr-1">
+              {[['opd', 'OPD'], ['wards', 'Wards & Beds']].map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setTab(k)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                    tab === k ? 'bg-purple-600 text-white shadow-sm' : 'text-purple-700 hover:bg-purple-200/60'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <button onClick={callReception} className="rounded-xl bg-purple-950 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-900 shadow-md">🔔 Call reception</button>
             <Link to="/" className="rounded-xl border border-purple-200/80 bg-white px-3 py-2 text-sm font-semibold text-purple-800 hover:bg-purple-50 transition">Reception</Link>
             <button onClick={onLogout} className="rounded-xl border border-purple-200/80 bg-white px-3 py-2 text-sm font-semibold text-purple-800 hover:bg-purple-50 transition">Lock</button>
@@ -87,6 +102,11 @@ function Console({ doctor, onLogout }) {
       )}
       {sent && <div className="bg-purple-600 text-white"><div className="max-w-6xl mx-auto px-5 py-2 text-sm font-semibold">✓ Reception has been notified.</div></div>}
 
+      {tab === 'wards' ? (
+        <main className="max-w-6xl mx-auto px-5 py-6">
+          <WardManagement />
+        </main>
+      ) : (
       <main className="max-w-6xl mx-auto px-5 py-6 grid gap-6 lg:grid-cols-3">
         {/* Now consulting — hero */}
         <section className="lg:col-span-2 space-y-4">
@@ -125,6 +145,7 @@ function Console({ doctor, onLogout }) {
           )}
         </aside>
       </main>
+      )}
     </div>
   )
 }
