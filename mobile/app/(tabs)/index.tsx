@@ -1,4 +1,6 @@
+import { router } from "expo-router";
 import { Text, View, Pressable } from "react-native";
+import { ChevronRight } from "lucide-react-native";
 import { ScreenContainer } from "../../components/ui/ScreenContainer";
 import { Card } from "../../components/ui/Card";
 import Logo from "../../components/Logo";
@@ -13,21 +15,28 @@ export default function DashboardScreen() {
 
   return (
     <ScreenContainer>
-      {/* Top Profile Header Bar */}
+      {/* Top Clickable Profile Header Bar */}
       <View className="flex-row items-center justify-between py-2 border-b border-slate-100 pb-3">
-        <View className="flex-row items-center gap-3">
+        <Pressable
+          onPress={() => router.push("/(tabs)/profile")}
+          className="flex-row items-center gap-3 active:opacity-70 flex-1 pr-2"
+        >
           <View className="h-11 w-11 rounded-full bg-emerald-600 items-center justify-center shadow-sm">
             <Text className="text-white font-bold text-lg">{initialLetter}</Text>
           </View>
-          <View>
-            <Text className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-              Government OPD Portal
-            </Text>
-            <Text className="text-base font-bold text-slate-900">
-              {profile?.full_name ?? "Patient"}
+          <View className="flex-1">
+            <View className="flex-row items-center gap-1">
+              <Text className="text-base font-bold text-slate-900">
+                {profile?.full_name ?? "Patient"}
+              </Text>
+              <ChevronRight size={18} color="#64748b" />
+            </View>
+            <Text className="text-xs font-semibold text-slate-500">
+              View &amp; Edit Profile
             </Text>
           </View>
-        </View>
+        </Pressable>
+
         <Logo size={28} />
       </View>
 

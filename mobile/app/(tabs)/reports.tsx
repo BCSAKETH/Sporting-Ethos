@@ -67,16 +67,13 @@ export default function ReportsScreen() {
           </Text>
         </View>
 
-        {/* Patient ABHA Tag */}
-        <Card className="flex-row items-center justify-between bg-emerald-50 border-emerald-200 py-3">
+        {/* Patient Record Tag */}
+        <Card className="flex-row items-center justify-between bg-slate-50 border-slate-200 py-3">
           <View>
-            <Text className="text-xs font-bold uppercase tracking-wider text-emerald-800">
+            <Text className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Patient Record
             </Text>
-            <Text className="text-sm font-semibold text-slate-800">{profile?.full_name ?? "Patient"}</Text>
-          </View>
-          <View className="rounded-full bg-emerald-600 px-3 py-1">
-            <Text className="text-xs font-bold text-white uppercase">ABHA Linked</Text>
+            <Text className="text-sm font-bold text-slate-900">{profile?.full_name ?? "Patient"}</Text>
           </View>
         </Card>
 
