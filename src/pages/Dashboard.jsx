@@ -111,14 +111,20 @@ export default function Dashboard() {
     return rowsWithDept.filter((r) => r.status === STATUS.IN_CONSULT)
   }, [rowsWithDept])
 
+  const [calledIds, setCalledIds] = useState(new Set())
+
   function callNextPatient() {
     if (receptionQueue.length === 0) return
     const first = receptionQueue[0]
+    setCalledIds((prev) => new Set(prev).add(first.id))
     chime()
     announce(`Patient ${first.name}, please proceed to Reception Counter 1`)
   }
 
   function changeStatus(id, status) {
+    if (status === STATUS.IN_CONSULT || status === STATUS.WAITING_RECEPTION) {
+      setCalledIds((prev) => new Set(prev).add(id))
+    }
     updateStatus(id, status)
   }
 
@@ -224,6 +230,7 @@ export default function Dashboard() {
                       onStatus={changeStatus}
                       onPriority={setPriority}
                       onForward={(r) => setForwardPatient(r)}
+                      isCalled={calledIds.has(row.id)}
                     />
                   </div>
                 ))}

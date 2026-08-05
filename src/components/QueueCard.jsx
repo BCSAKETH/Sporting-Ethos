@@ -28,7 +28,7 @@ const STATUS_LABEL = {
   [STATUS.PAUSED]: 'Paused',
 }
 
-export default function QueueCard({ row, position, isNew, eta, onStatus, onPriority, onForward }) {
+export default function QueueCard({ row, position, isNew, eta, onStatus, onPriority, onForward, isCalled }) {
   const emergency = row.priority === 'emergency'
   const faded = row.status === STATUS.DONE || row.status === STATUS.LEFT || row.status === STATUS.NO_SHOW
   const isWaiting = row.status === STATUS.WAITING || row.status === STATUS.WAITING_RECEPTION || row.status === STATUS.WAITING_DEPARTMENT || row.status === STATUS.PAUSED
@@ -81,8 +81,14 @@ export default function QueueCard({ row, position, isNew, eta, onStatus, onPrior
 
             {onForward && (
               <button
-                onClick={() => onForward(row)}
-                className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-95 transition"
+                disabled={!isCalled}
+                onClick={() => isCalled && onForward(row)}
+                title={!isCalled ? "Click 'Call next' to call patient to counter first" : "Forward patient to Doctor OPD"}
+                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                  isCalled
+                    ? 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 active:scale-95'
+                    : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                }`}
               >
                 ➡ Forward to Doctor
               </button>

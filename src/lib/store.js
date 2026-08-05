@@ -101,14 +101,45 @@ function mockWrite(rows) {
 // --------------------------------------------------------------------------
 // Public API
 // --------------------------------------------------------------------------
+export async function sendPatientNotification(patientId, title, body) {
+  if (!patientId) return
+  if (backendMode === 'supabase') {
+    try {
+      await supabase.from('notifications').insert({
+        patient_id: patientId,
+        title,
+        body,
+        is_read: false,
+      })
+    } catch (e) {
+      console.warn('Failed to insert notification into Supabase:', e)
+    }
+  }
+}
+
 export async function listCheckins() {
   if (backendMode === 'supabase') {
-    const { data, error } = await supabase
-      .from(TABLE)
-      .select('*')
-      .order('check_in_time', { ascending: true })
-    if (error) throw error
-    return data || []
+    try {
+      const { data, error } = await supabase
+        .from(TABLE)
+        .select('*, profiles(phone, blood_group, height_cm, weight_kg, emergency_contact_phone, date_of_birth, gender)')
+        .order('check_in_time', { ascending: true })
+      if (!error && data) {
+        return data.map((r) => ({
+          ...r,
+          phone: r.phone || r.profiles?.phone || null,
+          blood_group: r.blood_group || r.profiles?.blood_group || null,
+          height: r.height || r.profiles?.height_cm || null,
+          weight: r.weight || r.profiles?.weight_kg || null,
+          gender: r.gender || r.profiles?.gender || null,
+          emergency_contact: r.emergency_contact || r.profiles?.emergency_contact_phone || null,
+        }))
+      }
+    } catch (err) {
+      console.warn('Supabase listCheckins fallback to standard select:', err)
+      const { data } = await supabase.from(TABLE).select('*').order('check_in_time', { ascending: true })
+      if (data) return data
+    }
   }
   return mockRead()
 }
@@ -309,6 +340,12 @@ export async function forwardToDepartment(checkinId, departmentId) {
     department_id: departmentId,
     status: STATUS.WAITING_DEPARTMENT,
   }
+  const allCheckins = await listCheckins()
+  const target = allCheckins.find((r) => r.id === checkinId)
+  if (target?.patient_id) {
+    sendPatientNotification(target.patient_id, '🏥 OPD Department Assigned', 'Your ticket has been assigned to the doctor OPD queue.')
+  }
+
   if (backendMode === 'supabase') {
     try {
       const { error } = await supabase.from(TABLE).update(updatePayload).eq('id', checkinId)
@@ -361,6 +398,16 @@ export async function createCheckin({ name, priority = 'normal', gender = null, 
 }
 
 export async function updateStatus(id, status) {
+  const allCheckins = await listCheckins()
+  const target = allCheckins.find((r) => r.id === id)
+  if (target?.patient_id) {
+    if (status === STATUS.IN_CONSULT) {
+      sendPatientNotification(target.patient_id, "📣 It's Your Turn!", `Please proceed to ${target.department_name || 'Consultation Counter'} now.`)
+    } else if (status === STATUS.WAITING_RECEPTION || status === STATUS.WAITING) {
+      sendPatientNotification(target.patient_id, '📢 Call Next — Reception Desk', 'Please approach Reception Counter 1.')
+    }
+  }
+
   if (backendMode === 'supabase') {
     const { error } = await supabase.from(TABLE).update({ status }).eq('id', id)
     if (error) throw error

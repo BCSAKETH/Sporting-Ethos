@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import * as Notifications from "expo-notifications";
 import { queryKeys } from "../../constants/queryKeys";
 import {
   listMyNotifications,
@@ -21,8 +22,18 @@ export function useNotifications() {
 
   useEffect(() => {
     if (!profile) return;
-    const unsubscribe = subscribeToMyNotifications(profile.id, () => {
+    const unsubscribe = subscribeToMyNotifications(profile.id, (notif) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications(profile.id) });
+      if (notif && notif.title) {
+        Notifications.scheduleNotificationAsync({
+          content: {
+            title: notif.title,
+            body: notif.body ?? "It's your turn in the OPD queue!",
+            sound: true,
+          },
+          trigger: null,
+        }).catch((err) => console.warn("Local push banner failed:", err));
+      }
     });
     return unsubscribe;
   }, [profile, queryClient]);
