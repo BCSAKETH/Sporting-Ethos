@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import Logo from '../components/Logo.jsx'
 import ConsultationPanel from '../components/ConsultationPanel.jsx'
 import WardManagement from '../components/WardManagement.jsx'
-import { subscribe, updateStatus, setPriority, sortQueue, isActive, STATUS, findDoctorByCode } from '../lib/store.js'
+import { subscribe, updateStatus, setPriority, sortQueue, isActive, STATUS, findDoctorByCode, recommendAdmission } from '../lib/store.js'
 import { autoPrimeVoice, announce, chime } from '../lib/voice.js'
 import { sendIntercom, onIntercom } from '../lib/intercom.js'
 import { generateGroqConsultationSummary } from '../lib/chart.js'
@@ -308,6 +308,15 @@ function Chips({ row }) {
 }
 
 function NowConsulting({ row, onDone }) {
+  const [admitReq, setAdmitReq] = useState(false)
+  async function recommend() {
+    try {
+      await recommendAdmission({ patient_name: row.name, patient_id: row.patient_id ?? null, department_id: row.department_id ?? null })
+      setAdmitReq(true)
+    } catch (e) {
+      console.error('recommendAdmission failed', e)
+    }
+  }
   return (
     <div className="rounded-3xl border-2 border-purple-200 bg-white overflow-hidden shadow-lg shadow-purple-900/5">
       <div className="bg-purple-50/60 px-5 py-4 flex items-start justify-between gap-3 border-b border-purple-100">
@@ -327,9 +336,14 @@ function NowConsulting({ row, onDone }) {
       <div className="px-5 pb-5">
         <PatientMedicalFile row={row} />
         <ConsultationPanel row={row} />
-        <button onClick={onDone} className="mt-3 w-full rounded-2xl bg-purple-600 py-3.5 font-semibold text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 active:scale-95 transition">
-          ✓ Mark consultation done
-        </button>
+        <div className="mt-3 flex gap-2">
+          <button onClick={recommend} disabled={admitReq} className="flex-1 rounded-2xl border border-purple-300 bg-purple-50 py-3.5 font-semibold text-purple-800 hover:bg-purple-100 disabled:opacity-60 transition">
+            {admitReq ? '✓ Admission Requested' : '🏥 Recommend Admission'}
+          </button>
+          <button onClick={onDone} className="flex-1 rounded-2xl bg-purple-600 py-3.5 font-semibold text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 active:scale-95 transition">
+            ✓ Mark done
+          </button>
+        </div>
       </div>
     </div>
   )

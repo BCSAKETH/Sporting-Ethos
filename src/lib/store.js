@@ -776,3 +776,85 @@ export async function deductStock(medicineId, qty) {
   if (error) throw error
   return data === true
 }
+
+// --------------------------------------------------------------------------
+// Admission request flow (doctor recommends → reception allocates → discharge)
+// --------------------------------------------------------------------------
+
+// Doctor recommends admission — creates a request with no bed yet.
+export async function recommendAdmission({ patient_id = null, patient_name, department_id = null, doctor_id = null }) {
+  if (backendMode !== 'supabase') throw new Error('Admissions require the live database.')
+  const { data, error } = await supabase
+    .from('admissions')
+    .insert({ patient_id, patient_name, department_id, doctor_id, status: 'admission_recommended' })
+    .select()
+    .single()
+  if (error) throw error
+  notifyLocalListeners()
+  return data
+}
+
+// Reception allocates a bed to a recommended admission → status becomes admitted.
+export async function allocateBed(admissionId, { ward_id, room_id, bed_id, nurse_name = null, expected_discharge = null }) {
+  if (backendMode !== 'supabase') throw new Error('Admissions require the live database.')
+  const { error } = await supabase
+    .from('admissions')
+    .update({ ward_id, room_id, bed_id, nurse_name, expected_discharge, status: 'admitted', admission_date: nowIso() })
+    .eq('id', admissionId)
+  if (error) {
+    if (error.code === '23505') throw new Error('That bed already has an active admission — pick another bed.')
+    throw error
+  }
+  await supabase.from('beds').update({ status: 'Occupied' }).eq('id', bed_id)
+  notifyLocalListeners()
+}
+
+// Doctor flags an inpatient ready for discharge → reception does the checkout.
+export async function flagReadyForDischarge(admissionId) {
+  if (backendMode !== 'supabase') throw new Error('Admissions require the live database.')
+  const { error } = await supabase.from('admissions').update({ status: 'ready_for_discharge' }).eq('id', admissionId)
+  if (error) throw error
+  notifyLocalListeners()
+}
+
+// --------------------------------------------------------------------------
+// Diagnostic lab orders (doctor-ordered → dual fulfillment)
+// --------------------------------------------------------------------------
+export async function listLabOrders(status = null) {
+  if (backendMode !== 'supabase') return []
+  let q = supabase.from('lab_orders').select('*').order('created_at', { ascending: false })
+  if (status) q = q.eq('status', status)
+  const { data, error } = await q
+  if (error) { console.warn('listLabOrders error:', error); return [] }
+  return data || []
+}
+
+export async function createLabOrders(orders) {
+  if (backendMode !== 'supabase' || !orders?.length) return
+  const { error } = await supabase.from('lab_orders').insert(orders)
+  if (error) throw error
+  notifyLocalListeners()
+}
+
+export async function updateLabOrder(id, fields) {
+  if (backendMode !== 'supabase') return
+  const { error } = await supabase.from('lab_orders').update(fields).eq('id', id)
+  if (error) throw error
+  notifyLocalListeners()
+}
+
+export function subscribeLabOrders(callback) {
+  let cancelled = false
+  const push = async () => {
+    try { const d = await listLabOrders(); if (!cancelled) callback(d) } catch (e) { console.error(e) }
+  }
+  push()
+  if (backendMode === 'supabase') {
+    const sub = supabase
+      .channel(`lab-orders-rt-${++channelSeq}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lab_orders' }, push)
+      .subscribe()
+    return () => { cancelled = true; supabase.removeChannel(sub) }
+  }
+  return () => { cancelled = true }
+}

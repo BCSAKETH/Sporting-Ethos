@@ -3,6 +3,7 @@ import {
   subscribeIPD,
   admitPatient,
   dischargePatient,
+  flagReadyForDischarge,
   setBedStatus,
   roomDays,
 } from '../lib/store.js'
@@ -206,6 +207,18 @@ function DischargeModal({ target, onClose }) {
     }
   }
 
+  async function flagReady() {
+    if (!adm) return
+    setBusy(true)
+    try {
+      await flagReadyForDischarge(adm.id)
+      onClose()
+    } catch (e) {
+      console.error(e)
+      setBusy(false)
+    }
+  }
+
   return (
     <Modal onClose={onClose} title={done ? 'Discharge Complete' : 'Discharge Patient'}>
       {!adm ? (
@@ -234,10 +247,13 @@ function DischargeModal({ target, onClose }) {
               <span>Running Room Bill</span><span>{rupees(running)}</span>
             </div>
           </div>
+          <button onClick={flagReady} disabled={busy} className="w-full rounded-xl border border-purple-300 bg-purple-50 py-2.5 font-bold text-purple-800 hover:bg-purple-100 disabled:opacity-50">
+            🏳️ Flag Ready for Discharge → Reception
+          </button>
           <div className="flex gap-2 pt-1">
             <button onClick={onClose} className="flex-1 rounded-xl border border-slate-200 py-3 font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
             <button onClick={confirm} disabled={busy} className="flex-1 rounded-xl bg-rose-600 py-3 font-bold text-white hover:bg-rose-700 disabled:opacity-60">
-              {busy ? 'Discharging…' : 'Confirm Discharge'}
+              {busy ? 'Discharging…' : 'Discharge Now'}
             </button>
           </div>
         </div>

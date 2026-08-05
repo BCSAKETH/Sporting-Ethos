@@ -15,6 +15,7 @@ import {
 } from '../lib/store.js'
 import { autoPrimeVoice, announce, chime } from '../lib/voice.js'
 import { sendIntercom, onIntercom } from '../lib/intercom.js'
+import { AdmissionRequests, DischargeQueue } from '../components/ReceptionIPD.jsx'
 
 const AVG_MINUTES = 5
 
@@ -36,6 +37,7 @@ export default function Dashboard() {
   const [forwardPatient, setForwardPatient] = useState(null)
   const [departments, setDepartments] = useState([])
   const [emgQuery, setEmgQuery] = useState('')
+  const [tab, setTab] = useState('desk') // 'desk' | 'admissions' | 'discharges'
 
   const session = getStaffSession()
 
@@ -228,6 +230,26 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Reception tabs */}
+      <div className="max-w-6xl mx-auto px-5 pt-4">
+        <div className="inline-flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+          {[['desk', 'OPD Desk'], ['admissions', 'Admission Requests'], ['discharges', 'Discharge Queue']].map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setTab(k)}
+              className={`rounded-lg px-4 py-1.5 text-sm font-bold transition ${tab === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === 'admissions' ? (
+        <main className="max-w-6xl mx-auto px-5 py-6"><AdmissionRequests /></main>
+      ) : tab === 'discharges' ? (
+        <main className="max-w-6xl mx-auto px-5 py-6"><DischargeQueue /></main>
+      ) : (
       <main className="max-w-6xl mx-auto px-5 py-6 space-y-8">
         {/* Emergency Priority: find by Queue ID and bump to #1 */}
         <section className="fade-up">
@@ -372,6 +394,7 @@ export default function Dashboard() {
           </div>
         </section>
       </main>
+      )}
 
       {showQR && <ShowQRModal onClose={() => setShowQR(false)} />}
       {showAdd && <AddPatientModal onClose={() => setShowAdd(false)} />}
