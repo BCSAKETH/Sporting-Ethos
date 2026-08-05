@@ -129,32 +129,17 @@ function Console({ doctor, onLogout }) {
   )
 }
 
-function PreviousConsultationsHistory({ patientName, pastConsultations }) {
-  const [history, setHistory] = useState(pastConsultations || [
-    {
-      id: 'prev-1',
-      date: '14 May 2026',
-      doctor: 'Dr. Rohan Mehta (Cardiology)',
-      complaint: 'Patient reported chest tightness and shortness of breath following intense workout session.',
-      prescriptions: ['Aspirin 75mg', 'Metoprolol 25mg'],
-      summary: null,
-      loading: false,
-    },
-    {
-      id: 'prev-2',
-      date: '02 Feb 2026',
-      doctor: 'Dr. Vikram Singh (Orthopedics)',
-      complaint: 'Acute right knee joint strain with mild patellar swelling after marathons. Advised RICE protocol.',
-      prescriptions: ['Ibuprofen 400mg', 'Topical Analgesic Gel'],
-      summary: 'Diagnosed with patellar tendonitis. Managed conservatively with RICE and anti-inflammatories; clear for light activity.',
-      loading: false,
-    }
-  ])
+function PreviousConsultationsHistory({ patientName, pastConsultations = [] }) {
+  const [history, setHistory] = useState(pastConsultations)
+
+  useEffect(() => {
+    setHistory(pastConsultations)
+  }, [pastConsultations])
 
   async function summarizeWithGroq(item) {
     setHistory((prev) => prev.map((h) => (h.id === item.id ? { ...h, loading: true } : h)))
     try {
-      const summaryText = await generateGroqConsultationSummary(patientName, `Doctor: ${item.doctor}. Date: ${item.date}. Complaint: ${item.complaint}. Prescriptions: ${item.prescriptions.join(', ')}`)
+      const summaryText = await generateGroqConsultationSummary(patientName, `Doctor: ${item.doctor}. Date: ${item.date}. Complaint: ${item.complaint}. Prescriptions: ${item.prescriptions?.join(', ') || 'None'}`)
       setHistory((prev) => prev.map((h) => (h.id === item.id ? { ...h, summary: summaryText, loading: false } : h)))
     } catch {
       setHistory((prev) => prev.map((h) => (h.id === item.id ? { ...h, loading: false } : h)))
@@ -172,45 +157,51 @@ function PreviousConsultationsHistory({ patientName, pastConsultations }) {
         </span>
       </div>
 
-      <div className="space-y-2 text-xs">
-        {history.map((item) => (
-          <div key={item.id} className="bg-white p-3 rounded-xl border border-purple-100 space-y-1.5 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-purple-950">{item.doctor}</span>
-              <span className="text-purple-400 font-mono text-[11px]">{item.date}</span>
-            </div>
-            <div className="text-purple-900">
-              <span className="font-bold text-purple-950">Complaint: </span>{item.complaint}
-            </div>
-            {item.prescriptions && item.prescriptions.length > 0 && (
+      {history.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-purple-200 bg-white p-4 text-center text-xs font-medium text-purple-400">
+          No previous completed consultations recorded in database.
+        </div>
+      ) : (
+        <div className="space-y-2 text-xs">
+          {history.map((item) => (
+            <div key={item.id} className="bg-white p-3 rounded-xl border border-purple-100 space-y-1.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-purple-950">{item.doctor}</span>
+                <span className="text-purple-400 font-mono text-[11px]">{item.date}</span>
+              </div>
               <div className="text-purple-900">
-                <span className="font-bold text-purple-950">Rx: </span>{item.prescriptions.join(', ')}
+                <span className="font-bold text-purple-950">Complaint: </span>{item.complaint}
               </div>
-            )}
+              {item.prescriptions && item.prescriptions.length > 0 && (
+                <div className="text-purple-900">
+                  <span className="font-bold text-purple-950">Rx: </span>{item.prescriptions.join(', ')}
+                </div>
+              )}
 
-            <div className="mt-2 pt-2 border-t border-purple-100 flex items-start justify-between gap-2">
-              <div className="flex-1">
-                {item.summary ? (
-                  <div className="rounded-lg bg-purple-50 p-2.5 text-purple-950 text-[11px] leading-relaxed border border-purple-200/60">
-                    <span className="font-bold text-purple-900">🤖 Groq AI Clinical Summary: </span>
-                    {item.summary}
-                  </div>
-                ) : (
-                  <span className="text-purple-400 italic text-[11px]">No summary generated yet.</span>
-                )}
+              <div className="mt-2 pt-2 border-t border-purple-100 flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  {item.summary ? (
+                    <div className="rounded-lg bg-purple-50 p-2.5 text-purple-950 text-[11px] leading-relaxed border border-purple-200/60">
+                      <span className="font-bold text-purple-900">🤖 Groq AI Clinical Summary: </span>
+                      {item.summary}
+                    </div>
+                  ) : (
+                    <span className="text-purple-400 italic text-[11px]">No summary generated yet.</span>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => summarizeWithGroq(item)}
+                  disabled={item.loading}
+                  className="shrink-0 rounded-xl bg-purple-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-purple-700 disabled:opacity-50 transition"
+                >
+                  {item.loading ? 'Generating…' : '✨ Summarize with Groq'}
+                </button>
               </div>
-
-              <button
-                onClick={() => summarizeWithGroq(item)}
-                disabled={item.loading}
-                className="shrink-0 rounded-xl bg-purple-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-purple-700 disabled:opacity-50 transition"
-              >
-                {item.loading ? 'Generating…' : '✨ Summarize with Groq'}
-              </button>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -119,11 +119,19 @@ export default function Dashboard() {
     setCalledIds((prev) => new Set(prev).add(first.id))
     chime()
     announce(`Patient ${first.name}, please proceed to Reception Counter 1`)
+    setForwardPatient(first)
   }
 
   function changeStatus(id, status) {
-    if (status === STATUS.IN_CONSULT || status === STATUS.WAITING_RECEPTION) {
+    if (status === STATUS.IN_CONSULT) {
       setCalledIds((prev) => new Set(prev).add(id))
+      const row = receptionQueue.find((r) => r.id === id) || checkins.find((r) => r.id === id)
+      if (row) {
+        chime()
+        announce(`Patient ${row.name}, please proceed to Reception Counter 1`)
+        setForwardPatient(row)
+        return
+      }
     }
     updateStatus(id, status)
   }
@@ -370,25 +378,18 @@ function ShowQRModal({ onClose }) {
 }
 
 function ForwardModal({ patient, departments, onClose, onForwarded }) {
-  const [departmentId, setDepartmentId] = useState(() => (departments && departments.length > 0 ? departments[0].id : ''))
+  const [departmentId, setDepartmentId] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  useEffect(() => {
-    if (departments && departments.length > 0 && !departmentId) {
-      setDepartmentId(departments[0].id)
-    }
-  }, [departments, departmentId])
-
   async function handleForward(e) {
     e.preventDefault()
-    const targetDeptId = departmentId || (departments && departments.length > 0 ? departments[0].id : '')
-    if (!targetDeptId) return setErr('Please select a department.')
+    if (!departmentId) return setErr('Please select an OPD department.')
     setBusy(true)
     setErr('')
     try {
-      await forwardToDepartment(patient.id, targetDeptId)
-      const deptName = departments.find((d) => d.id === targetDeptId)?.name || 'Department'
+      await forwardToDepartment(patient.id, departmentId)
+      const deptName = departments.find((d) => d.id === departmentId)?.name || 'Department'
       chime()
       announce(`Patient ${patient.name} assigned to ${deptName}`)
       onForwarded()
@@ -420,6 +421,7 @@ function ForwardModal({ patient, departments, onClose, onForwarded }) {
               className="input w-full font-medium text-base bg-white"
               required
             >
+              <option value="">Choose OPD Department…</option>
               {departments.map((d) => (
                 <option key={d.id} value={d.id}>{d.name}</option>
               ))}
@@ -434,7 +436,7 @@ function ForwardModal({ patient, departments, onClose, onForwarded }) {
             </button>
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || !departmentId}
               className="flex-1 rounded-xl bg-emerald-600 py-3 font-bold text-white hover:bg-emerald-700 disabled:opacity-50 transition"
             >
               {busy ? 'Assigning…' : 'Forward to Doctor'}

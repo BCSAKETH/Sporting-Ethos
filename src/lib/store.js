@@ -122,24 +122,31 @@ export async function listCheckins() {
     try {
       const { data, error } = await supabase
         .from(TABLE)
-        .select('*, profiles(phone, blood_group, height_cm, weight_kg, emergency_contact_phone, date_of_birth, gender)')
+        .select('*, profiles:patient_id(phone, blood_group, height_cm, weight_kg, emergency_contact_phone, date_of_birth, gender)')
         .order('check_in_time', { ascending: true })
+
       if (!error && data) {
-        return data.map((r) => ({
-          ...r,
-          phone: r.phone || r.profiles?.phone || null,
-          blood_group: r.blood_group || r.profiles?.blood_group || null,
-          height: r.height || r.profiles?.height_cm || null,
-          weight: r.weight || r.profiles?.weight_kg || null,
-          gender: r.gender || r.profiles?.gender || null,
-          emergency_contact: r.emergency_contact || r.profiles?.emergency_contact_phone || null,
-        }))
+        // Fetch any profiles by name if patient_id was not linked directly
+        const { data: allProfiles } = await supabase.from('profiles').select('id, full_name, phone, blood_group, height_cm, weight_kg, emergency_contact_phone, date_of_birth, gender')
+
+        return data.map((r) => {
+          const matchedProf = r.profiles || allProfiles?.find((p) => p.id === r.patient_id || (p.full_name && r.name && p.full_name.trim().toLowerCase() === r.name.trim().toLowerCase()))
+          return {
+            ...r,
+            phone: r.phone || matchedProf?.phone || null,
+            blood_group: r.blood_group || matchedProf?.blood_group || null,
+            height: r.height || matchedProf?.height_cm || null,
+            weight: r.weight || matchedProf?.weight_kg || null,
+            gender: r.gender || matchedProf?.gender || null,
+            emergency_contact: r.emergency_contact || matchedProf?.emergency_contact_phone || null,
+          }
+        })
       }
     } catch (err) {
       console.warn('Supabase listCheckins fallback to standard select:', err)
-      const { data } = await supabase.from(TABLE).select('*').order('check_in_time', { ascending: true })
-      if (data) return data
     }
+    const { data } = await supabase.from(TABLE).select('*').order('check_in_time', { ascending: true })
+    if (data) return data
   }
   return mockRead()
 }
