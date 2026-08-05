@@ -611,3 +611,124 @@ export function subscribe(callback) {
     window.removeEventListener('storage', onStorage)
   }
 }
+
+// --------------------------------------------------------------------------
+// IPD: wards → rooms → beds → admissions (+ room billing)
+// --------------------------------------------------------------------------
+
+// Chargeable days = CEIL((discharge - admission) / 24h), minimum 1 day.
+export function roomDays(admissionISO, dischargeISO = nowIso()) {
+  const ms = new Date(dischargeISO).getTime() - new Date(admissionISO).getTime()
+  return Math.max(1, Math.ceil(ms / (24 * 3600 * 1000)))
+}
+
+// Full ward → room → bed tree, each bed carrying its active admission (if any).
+export async function listWardTree() {
+  if (backendMode !== 'supabase') return []
+  const [{ data: wards }, { data: rooms }, { data: beds }, { data: adms }] = await Promise.all([
+    supabase.from('wards').select('*, departments(name)').order('name'),
+    supabase.from('rooms').select('*').order('room_number'),
+    supabase.from('beds').select('*').order('bed_number'),
+    supabase.from('admissions').select('*').eq('status', 'admitted'),
+  ])
+  const admByBed = new Map((adms || []).map((a) => [a.bed_id, a]))
+  return (wards || []).map((w) => ({
+    ...w,
+    department_name: w.departments?.name || null,
+    rooms: (rooms || [])
+      .filter((r) => r.ward_id === w.id)
+      .map((r) => ({
+        ...r,
+        beds: (beds || [])
+          .filter((b) => b.room_id === r.id)
+          .map((b) => ({ ...b, admission: admByBed.get(b.id) || null })),
+      })),
+  }))
+}
+
+export async function listAdmissions(status = null) {
+  if (backendMode !== 'supabase') return []
+  let q = supabase
+    .from('admissions')
+    .select('*, departments(name), wards(name), rooms(room_number, daily_rate, room_type), beds(bed_number)')
+    .order('admission_date', { ascending: false })
+  if (status) q = q.eq('status', status)
+  const { data, error } = await q
+  if (error) { console.warn('listAdmissions error:', error); return [] }
+  return data || []
+}
+
+export async function admitPatient(payload) {
+  if (backendMode !== 'supabase') throw new Error('Inpatient admissions require the live database.')
+  const { data, error } = await supabase
+    .from('admissions')
+    .insert({ ...payload, status: 'admitted' })
+    .select()
+    .single()
+  if (error) {
+    // 23505 = the uniq_active_bed_admission partial unique index fired.
+    if (error.code === '23505') throw new Error('That bed already has an active admission — pick another bed.')
+    throw error
+  }
+  if (payload.bed_id) await supabase.from('beds').update({ status: 'Occupied' }).eq('id', payload.bed_id)
+  if (payload.patient_id) {
+    sendPatientNotification(payload.patient_id, '🏥 Admitted to Ward', 'You have been admitted. Your room and bed are ready.')
+  }
+  notifyLocalListeners()
+  return data
+}
+
+export async function dischargePatient(admissionId) {
+  if (backendMode !== 'supabase') throw new Error('Inpatient discharge requires the live database.')
+  const { data: adm, error: e1 } = await supabase
+    .from('admissions')
+    .select('*, rooms(daily_rate)')
+    .eq('id', admissionId)
+    .single()
+  if (e1 || !adm) throw e1 || new Error('Admission not found.')
+  const rate = Number(adm.rooms?.daily_rate || 0)
+  const days = roomDays(adm.admission_date)
+  const room_charges = days * rate
+  const { error } = await supabase
+    .from('admissions')
+    .update({ status: 'discharged', discharge_date: nowIso(), room_charges })
+    .eq('id', admissionId)
+  if (error) throw error
+  // Free the bed into the cleaning cycle.
+  if (adm.bed_id) await supabase.from('beds').update({ status: 'Cleaning' }).eq('id', adm.bed_id)
+  if (adm.patient_id) {
+    sendPatientNotification(adm.patient_id, '✓ Discharged', `Your discharge is complete. Room charges: ₹${room_charges}.`)
+  }
+  notifyLocalListeners()
+  return { days, room_charges }
+}
+
+export async function setBedStatus(bedId, status) {
+  if (backendMode !== 'supabase') return
+  const { error } = await supabase.from('beds').update({ status }).eq('id', bedId)
+  if (error) throw error
+  notifyLocalListeners()
+}
+
+// Realtime ward tree — beds/admissions changes re-push the whole tree.
+export function subscribeIPD(callback) {
+  let cancelled = false
+  const push = async () => {
+    try {
+      const tree = await listWardTree()
+      if (!cancelled) callback(tree)
+    } catch (e) {
+      console.error('IPD subscribe refresh failed', e)
+    }
+  }
+  push()
+  if (backendMode === 'supabase') {
+    const sub = supabase
+      .channel(`ipd-realtime-${++channelSeq}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'beds' }, push)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'admissions' }, push)
+      .subscribe()
+    return () => { cancelled = true; supabase.removeChannel(sub) }
+  }
+  return () => { cancelled = true }
+}

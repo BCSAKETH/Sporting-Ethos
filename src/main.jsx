@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard.jsx'
 import Expert from './pages/Expert.jsx'
 import Pharmacy from './pages/Pharmacy.jsx'
 import Admin from './pages/Admin.jsx'
+import Wards from './pages/Wards.jsx'
 import AccessGate from './pages/AccessGate.jsx'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -24,6 +25,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
         {/* Admin Command Centre */}
         <Route path="/admin" element={<AccessGate requiredRole="admin"><Admin /></AccessGate>} />
+
+        {/* Inpatient Ward & Bed Management */}
+        <Route path="/wards" element={<AccessGate requiredRole="doctor"><Wards /></AccessGate>} />
 
         {/* Patient self check-in — reached by scanning the counter QR code (Public) */}
         <Route path="/checkin" element={<PatientCheckIn />} />
