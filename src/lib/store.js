@@ -269,7 +269,13 @@ export async function verifyStaffAccessCode(code) {
       .eq('is_active', true)
       .maybeSingle()
 
-    if (!error && data) return data
+    // A real, reachable `staff` table exists in live mode — an actual "no
+    // match" (data is null, no error) must mean the code is invalid, not
+    // fall through to the local demo dictionary below. Only a genuine query
+    // failure (table missing, network issue) falls back, same as the other
+    // Supabase-backed reads in this file.
+    if (!error) return data || null
+    console.warn('Staff lookup failed, falling back to local demo staff:', error.message)
   }
 
   const list = mockStaffRead()

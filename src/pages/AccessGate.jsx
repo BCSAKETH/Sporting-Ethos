@@ -108,7 +108,7 @@ export default function AccessGate({ children, requiredRole }) {
         </form>
 
         <p className="mt-6 text-[11px] text-slate-400">
-          Default Demo Codes: Admin: <b>9999</b> | Reception: <b>1111</b> | Doctor: <b>2222</b> | Pharmacy: <b>3333</b>
+          Forgot your code? Ask your hospital administrator.
         </p>
       </div>
     </div>

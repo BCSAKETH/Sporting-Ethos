@@ -24,6 +24,10 @@ historical record; everything since is an additive, timestamped migration.
 | `20260803120013_security_hardening.sql` | Pins `search_path`, revokes public RPC access to trigger-only functions |
 | `20260803120014_performance_hardening.sql` | Wraps `auth.*()`/`is_admin()` in `(select ...)`, splits catalog admin policies off `SELECT`, adds indexes on FK columns the advisor flagged |
 | `20260803120015_single_hospital.sql` | Removes the second demo hospital — this deployment is scoped to one hospital; see [database.md](database.md) |
+| `20260805090000_staff_access_codes.sql` | Adds `doctors.access_code_hash` + a `verify_staff_access_code()` SECURITY DEFINER RPC (fixes the web app's `Expert.jsx` doctor-code lookup, which previously referenced non-existent columns and silently ran on a hardcoded JS dictionary) |
+| `20260805091500_staff_table.sql` | Adds the real `public.staff` table backing the web app's `AccessGate`/`Admin` portal (staff login + staff management), previously mock-only (localStorage, well-known default PINs) |
+
+**Note:** neither of the two migrations above seeds an actual access code into the file — the plaintext of a working credential must never land in git history. Bootstrap codes were issued directly against the live database and handed to the project owner out-of-band.
 
 Applied via the Supabase MCP `apply_migration` tool directly against the live project
 (no local Postgres in this environment) and mirrored here as files per "never overwrite
