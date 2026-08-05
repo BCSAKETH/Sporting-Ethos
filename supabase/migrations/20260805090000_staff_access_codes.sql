@@ -37,7 +37,7 @@ returns table (
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select
     d.id,
@@ -50,7 +50,7 @@ as $$
   where d.status = 'active'
     and d.access_code_hash is not null
     and p_code is not null
-    and d.access_code_hash = crypt(p_code, d.access_code_hash)
+    and d.access_code_hash = extensions.crypt(p_code, d.access_code_hash)
   limit 1;
 $$;
 
