@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { QRCodeCanvas } from 'qrcode.react'
 import Logo from '../components/Logo.jsx'
 import QueueCard from '../components/QueueCard.jsx'
 import { clearStaffSession, getStaffSession } from './AccessGate.jsx'
@@ -31,6 +32,7 @@ export default function Dashboard() {
 
   const [ring, setRing] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
+  const [showQR, setShowQR] = useState(false)
   const [forwardPatient, setForwardPatient] = useState(null)
   const [departments, setDepartments] = useState([])
 
@@ -132,18 +134,25 @@ export default function Dashboard() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowQR(true)}
+              className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 flex items-center gap-1.5 shadow-sm transition"
+            >
+              📱 Show Counter QR
+            </button>
+
             <button
               onClick={callNextPatient}
               disabled={receptionQueue.length === 0}
-              className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+              className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50 transition"
             >
               📣 Call Next Patient
             </button>
 
             <button
               onClick={() => setShowAdd(true)}
-              className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-700"
+              className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 transition"
             >
               ＋ Add Walk-in Patient
             </button>
@@ -154,7 +163,7 @@ export default function Dashboard() {
 
             <button
               onClick={clearStaffSession}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
             >
               🔒 Lock
             </button>
@@ -289,6 +298,7 @@ export default function Dashboard() {
         </section>
       </main>
 
+      {showQR && <ShowQRModal onClose={() => setShowQR(false)} />}
       {showAdd && <AddPatientModal onClose={() => setShowAdd(false)} />}
 
       {forwardPatient && (
@@ -299,6 +309,62 @@ export default function Dashboard() {
           onForwarded={() => setForwardPatient(null)}
         />
       )}
+    </div>
+  )
+}
+
+function ShowQRModal({ onClose }) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const checkinUrl = `${origin}/checkin`
+
+  function downloadQR() {
+    const canvas = document.getElementById('qr-hires-reception')
+    if (!canvas) return
+    const a = document.createElement('a')
+    a.href = canvas.toDataURL('image/png')
+    a.download = 'opd-counter-qr.png'
+    a.click()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">Hospital Counter QR Code</h2>
+            <p className="text-xs text-slate-500">Scan with mobile camera to check in</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl font-bold">×</button>
+        </div>
+
+        <div className="flex flex-col items-center justify-center py-2">
+          <div className="rounded-3xl border-4 border-emerald-600 p-6 bg-white shadow-xl text-center">
+            <QRCodeCanvas value={checkinUrl} size={240} includeMargin level="M" />
+            <p className="mt-4 text-xs font-bold text-slate-800 uppercase tracking-widest">
+              OPD Check-In QR
+            </p>
+          </div>
+
+          <div style={{ display: 'none' }}>
+            <QRCodeCanvas id="qr-hires-reception" value={checkinUrl} size={1024} includeMargin level="M" />
+          </div>
+
+          <div className="flex gap-2 w-full mt-6">
+            <button
+              onClick={downloadQR}
+              className="flex-1 rounded-2xl border border-slate-200 py-3 font-semibold text-slate-700 hover:bg-slate-50 transition"
+            >
+              Download PNG
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-1 rounded-2xl bg-emerald-600 py-3 font-bold text-white shadow-lg shadow-emerald-600/30 hover:bg-emerald-700 transition"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
