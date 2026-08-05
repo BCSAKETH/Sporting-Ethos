@@ -6,20 +6,10 @@ export function buildCheckinQrValue(): string {
 }
 
 /**
- * Returns true for a scanned QR string that is a Sporting Ethos check-in code.
- * Accepts any valid URL or deep-link containing 'checkin' (e.g. https://sporting-ethos-six.vercel.app/checkin).
+ * Accepts any non-empty scanned QR code value as a valid check-in code.
  */
 export function isCheckinQrValue(value: string): boolean {
   if (!value) return false;
-  const str = value.trim().toLowerCase();
-
-  if (
-    str.includes("checkin") ||
-    str.includes("sportingethos") ||
-    str.endsWith("/checkin")
-  ) {
-    return true;
-  }
-
-  return false;
+  const str = value.trim();
+  return str.length > 0;
 }
