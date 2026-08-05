@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { Text, View, Pressable } from "react-native";
 import { ScreenContainer } from "../../components/ui/ScreenContainer";
 import { Card } from "../../components/ui/Card";
+import CalledAlert from "../../components/CalledAlert";
 import { useAuth } from "../../features/auth/useAuth";
 import { useActiveMedications } from "../../features/medications/useMedications";
 import { bmiCategory } from "../../utils/health";
@@ -13,6 +14,8 @@ export default function DashboardScreen() {
 
   return (
     <ScreenContainer>
+      <CalledAlert />
+
       {/* Top bar: greeting + name on the left, profile button on the right */}
       <View className="flex-row items-center justify-between py-2 border-b border-slate-100 pb-3">
         <View className="flex-1 pr-3">

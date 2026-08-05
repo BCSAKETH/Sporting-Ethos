@@ -1,13 +1,72 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Text, View, ScrollView, TouchableOpacity, Modal, ActivityIndicator } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Calendar, Stethoscope, Pill, ChevronRight, X, Receipt, Wallet, CheckCircle2, Clock } from "lucide-react-native";
+import { FileText, Calendar, Stethoscope, Pill, ChevronRight, X, Receipt, Wallet, CheckCircle2, Clock, BedDouble, Download } from "lucide-react-native";
 import { ScreenContainer } from "../../components/ui/ScreenContainer";
 import { Card } from "../../components/ui/Card";
 import { useAuth } from "../../features/auth/useAuth";
-import { getPatientRecords, type ConsultationReport, type PatientBill } from "../../services/records.service";
+import { getPatientRecords, getActiveAdmission, type ConsultationReport, type PatientBill, type StructuredMedication } from "../../services/records.service";
+import { exportReportPdf, exportBillPdf } from "../../lib/pdf";
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+
+const TIMINGS: [keyof NonNullable<StructuredMedication["timing"]>, string][] = [
+  ["morning", "Morning"], ["afternoon", "Afternoon"], ["evening", "Evening"], ["night", "Night"],
+];
+
+// Live IPD room-charge banner — reflects the running bill while admitted.
+function IpdTicker({ patientId }: { patientId: string }) {
+  const { data: adm } = useQuery({
+    queryKey: ["active-admission", patientId],
+    queryFn: () => getActiveAdmission(patientId),
+    enabled: !!patientId,
+    refetchInterval: 30000,
+  });
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  if (!adm) return null;
+  // Live accrual estimate (per-second) shown alongside the billable day count.
+  const elapsedSec = Math.max(0, (Date.now() - new Date(adm.admissionDate).getTime()) / 1000);
+  const accrued = (adm.dailyRate / 86400) * elapsedSec;
+  return (
+    <View className="rounded-2xl bg-sky-600 p-4">
+      <View className="flex-row items-center gap-2">
+        <BedDouble size={18} color="#fff" />
+        <Text className="text-white font-bold text-sm">Currently Admitted · {adm.admissionNo}</Text>
+      </View>
+      <Text className="text-sky-100 text-xs mt-1">
+        {adm.ward ?? "Ward"} · Room {adm.room} · Bed {adm.bed} · {inr(adm.dailyRate)}/day
+      </Text>
+      <View className="flex-row items-end justify-between mt-2">
+        <View>
+          <Text className="text-[10px] font-semibold uppercase text-sky-200">Billable ({adm.days}d)</Text>
+          <Text className="text-white text-2xl font-extrabold">{inr(adm.runningCharges)}</Text>
+        </View>
+        <Text className="text-sky-100 text-xs mb-1">accruing ≈ {inr(Math.floor(accrued))}</Text>
+      </View>
+    </View>
+  );
+}
+
+function IntakeCard({ med }: { med: StructuredMedication }) {
+  const timings = TIMINGS.filter(([k]) => med.timing?.[k]).map(([, l]) => l).join(" • ");
+  return (
+    <View className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+      <View className="flex-row items-center gap-2">
+        <Pill size={18} color="#047857" />
+        <Text className="text-sm font-bold text-slate-900 flex-1">{med.medicine_name}</Text>
+      </View>
+      <Text className="text-xs text-slate-600 mt-1">
+        {med.dosage} × {med.frequency}/day × {med.duration_days} days · {med.route ?? "Oral"} · {med.before_after_food ?? ""}
+      </Text>
+      {timings ? <Text className="text-xs text-emerald-700 mt-0.5">🕐 {timings}</Text> : null}
+      {med.special_instructions ? <Text className="text-xs text-purple-600 mt-0.5">✎ {med.special_instructions}</Text> : null}
+    </View>
+  );
+}
 
 export default function ReportsScreen() {
   const { profile } = useAuth();
@@ -41,6 +100,8 @@ export default function ReportsScreen() {
           </View>
           <FileText size={22} color="#94a3b8" />
         </Card>
+
+        {profile?.id ? <IpdTicker patientId={profile.id} /> : null}
 
         <View className="flex-row bg-slate-100 rounded-2xl p-1">
           <SegBtn label={`Consultations${reports.length ? ` (${reports.length})` : ""}`} active={tab === "reports"} onPress={() => setTab("reports")} />
@@ -173,7 +234,14 @@ export default function ReportsScreen() {
                   </View>
                 ) : null}
 
-                {selectedReport.prescriptions.length ? (
+                {selectedReport.medications.length ? (
+                  <View>
+                    <Text className="text-xs font-bold uppercase text-slate-400 mb-2">Prescribed (e-Rx) — how to take</Text>
+                    <View className="gap-2">
+                      {selectedReport.medications.map((med, idx) => <IntakeCard key={idx} med={med} />)}
+                    </View>
+                  </View>
+                ) : selectedReport.prescriptions.length ? (
                   <View>
                     <Text className="text-xs font-bold uppercase text-slate-400 mb-2">Prescribed (Rx)</Text>
                     <View className="gap-2">
@@ -196,6 +264,14 @@ export default function ReportsScreen() {
                   </View>
                 ) : null}
               </ScrollView>
+
+              <TouchableOpacity
+                onPress={() => exportReportPdf(selectedReport, profile?.full_name ?? "Patient")}
+                className="flex-row items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3"
+              >
+                <Download size={18} color="#fff" />
+                <Text className="text-white font-bold">Download PDF</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -242,6 +318,14 @@ export default function ReportsScreen() {
                 </View>
                 <StatusPill status={selectedBill.status} />
               </View>
+
+              <TouchableOpacity
+                onPress={() => exportBillPdf(selectedBill, profile?.full_name ?? "Patient")}
+                className="flex-row items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3"
+              >
+                <Download size={18} color="#fff" />
+                <Text className="text-white font-bold">Download PDF</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
