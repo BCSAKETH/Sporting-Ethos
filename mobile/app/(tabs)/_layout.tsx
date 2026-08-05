@@ -36,41 +36,45 @@ export default function TabsLayout() {
         name="scan"
         options={{
           title: "Scan QR",
-          tabBarButton: () => (
+          tabBarButton: ({ style }) => (
             <TouchableOpacity
               onPress={() => router.push("/scan")}
               activeOpacity={0.85}
-              style={{
-                top: -18,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
+              style={[
+                style,
+                {
+                  flex: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  top: -14,
+                },
+              ]}
             >
               <View
                 style={{
-                  width: 58,
-                  height: 58,
-                  borderRadius: 29,
+                  width: 52,
+                  height: 52,
+                  borderRadius: 26,
                   backgroundColor: "#059669",
                   justifyContent: "center",
                   alignItems: "center",
+                  elevation: 6,
                   shadowColor: "#059669",
-                  shadowOffset: { width: 0, height: 6 },
-                  shadowOpacity: 0.35,
-                  shadowRadius: 8,
-                  elevation: 8,
-                  borderWidth: 4,
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 6,
+                  borderWidth: 3,
                   borderColor: "#ffffff",
                 }}
               >
-                <QrCode color="#ffffff" size={26} />
+                <QrCode color="#ffffff" size={24} />
               </View>
               <Text
                 style={{
                   fontSize: 10,
                   fontWeight: "700",
                   color: primary[700],
-                  marginTop: 2,
+                  marginTop: 1,
                 }}
               >
                 Scan QR

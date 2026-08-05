@@ -1,7 +1,4 @@
-import { router } from "expo-router";
-import { Pressable, Text, View } from "react-native";
-import { QrCode, FileText, User } from "lucide-react-native";
-
+import { Text, View, Pressable } from "react-native";
 import { ScreenContainer } from "../../components/ui/ScreenContainer";
 import { Card } from "../../components/ui/Card";
 import Logo from "../../components/Logo";
@@ -34,39 +31,6 @@ export default function DashboardScreen() {
         <Logo size={28} />
       </View>
 
-      {/* OPD Live Counter Quick Banner */}
-      <Card className="mt-4 bg-emerald-700 p-5 gap-3">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1 pr-2">
-            <Text className="text-white font-bold text-lg">Hospital Counter Check-In</Text>
-            <Text className="text-emerald-100 text-xs mt-0.5">
-              Scan the QR code at the reception counter to get your OPD live queue ticket.
-            </Text>
-          </View>
-          <Pressable
-            onPress={() => router.push("/scan")}
-            className="h-12 w-12 rounded-2xl bg-white items-center justify-center shadow-md active:scale-95"
-          >
-            <QrCode size={24} color="#047857" />
-          </Pressable>
-        </View>
-
-        <Pressable
-          onPress={() => router.push("/scan")}
-          className="mt-2 rounded-xl bg-white/20 py-2.5 items-center justify-center active:bg-white/30"
-        >
-          <Text className="text-white font-bold text-xs uppercase tracking-wider">
-            📷 Open Counter QR Scanner
-          </Text>
-        </Pressable>
-      </Card>
-
-      {/* Quick Access Tiles */}
-      <View className="mt-4 flex-row gap-3">
-        <QuickAction icon={QrCode} label="Scan Counter QR" onPress={() => router.push("/scan")} />
-        <QuickAction icon={FileText} label="OPD Reports" onPress={() => router.push("/(tabs)/reports")} />
-      </View>
-
       {/* Health Summary */}
       <Text className="mb-2 mt-6 text-base font-bold text-slate-900">Patient Health Profile</Text>
       <Card className="flex-row justify-between py-4">
@@ -76,6 +40,7 @@ export default function DashboardScreen() {
         <SummaryStat label="Weight" value={profile?.weight_kg ? `${profile.weight_kg} kg` : "65 kg"} />
       </Card>
 
+      {/* Active OPD Medications */}
       <ActiveMedicationsCard />
     </ScreenContainer>
   );
@@ -112,30 +77,6 @@ function ActiveMedicationsCard() {
         )}
       </Card>
     </View>
-  );
-}
-
-function QuickAction({
-  icon: Icon,
-  label,
-  onPress,
-}: {
-  icon: typeof QrCode;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      className="flex-1 items-center gap-2 rounded-2xl border border-slate-200 bg-white py-4 shadow-sm active:bg-slate-50"
-    >
-      <View className="rounded-full bg-emerald-50 p-3">
-        <Icon size={22} color="#047857" />
-      </View>
-      <Text className="text-center text-xs font-bold text-slate-700">{label}</Text>
-    </Pressable>
   );
 }
 
