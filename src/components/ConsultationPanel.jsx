@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { startRecording, generateNotes, downloadNotesPDF } from '../lib/chart.js'
 import { saveNotes } from '../lib/store.js'
+import StructuredRx from './StructuredRx.jsx'
 
 const SAMPLE_TRANSCRIPT =
   "Patient reports right knee pain that started three days ago after a long run. " +
@@ -56,6 +57,7 @@ export default function ConsultationPanel({ row }) {
   const mmss = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`
 
   return (
+    <>
     <div className="mt-3 rounded-2xl border border-purple-200/70 bg-[#FAF8F5] p-4 shadow-sm">
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold uppercase tracking-wider text-purple-600">
@@ -139,6 +141,8 @@ export default function ConsultationPanel({ row }) {
         </div>
       )}
     </div>
+    <StructuredRx row={row} />
+    </>
   )
 }
 

@@ -10,6 +10,8 @@ import {
   updateMedicine,
   deleteMedicine,
   savePharmacyBill,
+  requiredUnits,
+  deductStock,
 } from '../lib/store.js'
 import { downloadBillPDF, makeBillNo, rupees } from '../lib/bill.js'
 
@@ -27,9 +29,11 @@ function Console({ pharmacist, onLogout }) {
   useEffect(() => subscribe(setCheckins), [])
 
   const pendingPrescriptions = useMemo(() => {
-    return checkins.filter(
-      (r) => (r.notes?.prescriptions && r.notes.prescriptions.length > 0) && !r.pharmacy?.paid
-    )
+    return checkins.filter((r) => {
+      const hasStructured = Array.isArray(r.prescriptions) && r.prescriptions.length > 0
+      const hasFreeText = r.notes?.prescriptions && r.notes.prescriptions.length > 0
+      return (hasStructured || hasFreeText) && !r.pharmacy?.paid
+    })
   }, [checkins])
 
   return (
@@ -131,6 +135,13 @@ function matchMedicine(line, meds) {
   }) || null
 }
 
+// Compact timing schedule for a structured Rx, e.g. "Morning • Night".
+function timingLabel(rx) {
+  const map = [['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening'], ['night', 'Night']]
+  if (!rx?.timing) return ''
+  return map.filter(([k]) => rx.timing[k]).map(([, v]) => v).join(' • ')
+}
+
 function Counter({ meds, pendingList }) {
   const [appt, setAppt] = useState('')
   const [patient, setPatient] = useState(null)
@@ -149,6 +160,30 @@ function Counter({ meds, pendingList }) {
     if (p.pharmacy?.paid) {
       setPaidBill(p.pharmacy)
       setOrder([])
+      return
+    }
+
+    // Prefer the doctor's STRUCTURED e-Rx (exact dosage math). Total required =
+    // dosage × frequency × duration. Fall back to the free-text notes parser.
+    const structured = Array.isArray(p.prescriptions) ? p.prescriptions : []
+    if (structured.length) {
+      setOrder(
+        structured.map((rx) => {
+          const req = requiredUnits(rx)
+          const med = matchMedicine(rx.medicine_name, meds)
+          const available = med ? Number(med.stock) || 0 : 0
+          if (!med || available <= 0) {
+            // Case 3 — Unavailable (nothing to dispense; prescribe alternative)
+            return { medicine_id: med?.id || null, name: rx.medicine_name, price: med ? Number(med.price) || 0 : 0, qty: 0, required: req, available, rx, kase: 'unavailable' }
+          }
+          if (available < req) {
+            // Case 2 — Insufficient (partial dispense of what's on hand)
+            return { medicine_id: med.id, name: med.name, price: Number(med.price) || 0, qty: available, required: req, available, rx, kase: 'insufficient' }
+          }
+          // Case 1 — Sufficient
+          return { medicine_id: med.id, name: med.name, price: Number(med.price) || 0, qty: req, required: req, available, rx, kase: 'sufficient' }
+        }),
+      )
       return
     }
 
@@ -211,23 +246,41 @@ function Counter({ meds, pendingList }) {
   }
 
   async function takePayment() {
-    if (!patient || !order.length) return
+    if (!patient) return
+    // Only actually-dispensable lines (a matched medicine + qty > 0) get billed
+    // and deducted; unavailable lines are guidance for the doctor to substitute.
+    const dispensable = order.filter((o) => o.medicine_id && o.qty > 0)
+    if (!dispensable.length) return alert('Nothing to dispense — all prescribed items are out of stock. Prescribe an alternative.')
     setBusy(true)
     try {
+      // Atomic deduction first; if any line can't be fulfilled (race), stop.
+      const deducted = []
+      for (const it of dispensable) {
+        const ok = await deductStock(it.medicine_id, it.qty)
+        if (!ok) {
+          // roll back the ones already taken this transaction
+          for (const d of deducted) await updateMedicine(d.medicine_id, { stock: (meds.find((m) => m.id === d.medicine_id)?.stock || 0) })
+          setBusy(false)
+          return alert(`Stock changed for "${it.name}" — please re-check the order.`)
+        }
+        deducted.push(it)
+      }
+
       const bill = {
         bill_no: makeBillNo(),
-        items: order.map(({ name, price, qty, instruction }) => ({ name, price, qty, instruction: instruction || null })),
-        total,
+        items: dispensable.map((it) => ({
+          name: it.name,
+          price: it.price,
+          qty: it.qty,
+          instruction: it.rx
+            ? `${it.rx.dosage}×${it.rx.frequency}/day×${it.rx.duration_days}d · ${it.rx.before_after_food || ''}`.trim()
+            : it.instruction || null,
+        })),
+        total: dispensable.reduce((s, it) => s + it.price * it.qty, 0),
         paid: true,
         paid_at: new Date().toISOString(),
       }
       await savePharmacyBill(patient.id, bill)
-      for (const it of order) {
-        if (it.medicine_id) {
-          const m = meds.find((x) => x.id === it.medicine_id)
-          if (m) await updateMedicine(it.medicine_id, { stock: Math.max(0, (m.stock || 0) - it.qty) })
-        }
-      }
       downloadBillPDF(patient, bill)
       setPaidBill(bill)
     } catch (e) {
@@ -390,18 +443,36 @@ function Counter({ meds, pendingList }) {
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-slate-800 truncate flex items-center gap-1.5">
                               {it.name}
-                              {it.notInStock && (
-                                <span className="rounded bg-amber-100 text-amber-800 border border-amber-200 px-1 py-0.5 text-[9px] font-bold uppercase shrink-0">
-                                  Not in stock
-                                </span>
+                              {it.kase === 'insufficient' && (
+                                <span className="rounded bg-amber-100 text-amber-800 border border-amber-200 px-1 py-0.5 text-[9px] font-bold uppercase shrink-0">Partial</span>
+                              )}
+                              {(it.kase === 'unavailable' || it.notInStock) && (
+                                <span className="rounded bg-rose-100 text-rose-800 border border-rose-200 px-1 py-0.5 text-[9px] font-bold uppercase shrink-0">Unavailable</span>
                               )}
                             </div>
-                            {it.instruction && (
+
+                            {it.rx ? (
+                              <div className="text-[10px] text-slate-500">
+                                {it.rx.dosage}×{it.rx.frequency}/day×{it.rx.duration_days}d = <b className="text-slate-700">{it.required} units</b>
+                                {timingLabel(it.rx) ? ` · ${timingLabel(it.rx)}` : ''}
+                                {it.rx.before_after_food ? ` · ${it.rx.before_after_food}` : ''}
+                              </div>
+                            ) : it.instruction ? (
                               <div className="text-[10px] font-medium text-emerald-700 truncate">↳ {it.instruction}</div>
+                            ) : null}
+                            {it.rx?.special_instructions && (
+                              <div className="text-[10px] text-purple-600 truncate">✎ {it.rx.special_instructions}</div>
                             )}
-                            <div className="text-[10px] text-slate-500">
-                              {it.notInStock ? 'Substitute or set price →' : `${rupees(it.price)} each`}
-                            </div>
+
+                            {it.kase === 'insufficient' && (
+                              <div className="text-[10px] font-bold text-amber-700">Available: {it.available} · Required: {it.required} · Shortage: {it.required - it.available}</div>
+                            )}
+                            {(it.kase === 'unavailable' || it.notInStock) && (
+                              <div className="text-[10px] font-bold text-rose-700">Medicine not available — prescribe alternative</div>
+                            )}
+                            {it.kase !== 'unavailable' && !it.notInStock && (
+                              <div className="text-[10px] text-slate-500">{rupees(it.price)} each</div>
+                            )}
                           </div>
                           <div className="flex items-center gap-1">
                             <button

@@ -732,3 +732,47 @@ export function subscribeIPD(callback) {
   }
   return () => { cancelled = true }
 }
+
+// --------------------------------------------------------------------------
+// Structured prescriptions + dosage math
+// --------------------------------------------------------------------------
+
+// Save the doctor's STRUCTURED prescription array to the consultation record.
+// Shape per item:
+//   { medicine_name, dosage, frequency, duration_days, route,
+//     before_after_food, timing:{morning,afternoon,evening,night},
+//     special_instructions }
+export async function savePrescriptions(id, prescriptions) {
+  if (backendMode === 'supabase') {
+    const { error } = await supabase.from(TABLE).update({ prescriptions }).eq('id', id)
+    if (error) throw error
+    notifyLocalListeners()
+    return
+  }
+  const rows = mockRead().map((r) => (r.id === id ? { ...r, prescriptions } : r))
+  mockWrite(rows)
+}
+
+// Total units required to dispense a full course = Dosage × Frequency × Duration.
+export function requiredUnits(rx) {
+  const dosage = Number(rx?.dosage) || 0
+  const frequency = Number(rx?.frequency) || 0
+  const days = Number(rx?.duration_days) || 0
+  return Math.max(0, Math.ceil(dosage * frequency * days))
+}
+
+// Atomic stock deduction — only succeeds if enough stock is present, so two
+// pharmacists dispensing at once can't drive stock negative.
+export async function deductStock(medicineId, qty) {
+  if (backendMode !== 'supabase') {
+    const rows = medRead()
+    const m = rows.find((r) => r.id === medicineId)
+    if (!m || (m.stock || 0) < qty) return false
+    medWrite(rows.map((r) => (r.id === medicineId ? { ...r, stock: r.stock - qty } : r)))
+    return true
+  }
+  // Conditional update: WHERE stock >= qty. If no row returns, stock was short.
+  const { data, error } = await supabase.rpc('deduct_medicine_stock', { p_id: medicineId, p_qty: qty })
+  if (error) throw error
+  return data === true
+}
