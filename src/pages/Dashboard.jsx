@@ -363,21 +363,31 @@ function ShowQRModal({ onClose }) {
 }
 
 function ForwardModal({ patient, departments, onClose, onForwarded }) {
-  const [departmentId, setDepartmentId] = useState('')
+  const [departmentId, setDepartmentId] = useState(() => (departments && departments.length > 0 ? departments[0].id : ''))
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (departments && departments.length > 0 && !departmentId) {
+      setDepartmentId(departments[0].id)
+    }
+  }, [departments, departmentId])
 
   async function handleForward(e) {
     e.preventDefault()
-    if (!departmentId) return
+    const targetDeptId = departmentId || (departments && departments.length > 0 ? departments[0].id : '')
+    if (!targetDeptId) return setErr('Please select a department.')
     setBusy(true)
+    setErr('')
     try {
-      await forwardToDepartment(patient.id, departmentId)
-      const deptName = departments.find((d) => d.id === departmentId)?.name || 'Department'
+      await forwardToDepartment(patient.id, targetDeptId)
+      const deptName = departments.find((d) => d.id === targetDeptId)?.name || 'Department'
       chime()
       announce(`Patient ${patient.name} assigned to ${deptName}`)
       onForwarded()
     } catch (err) {
       console.error(err)
+      setErr(err?.message || 'Failed to forward patient to department.')
       setBusy(false)
     }
   }
@@ -400,15 +410,16 @@ function ForwardModal({ patient, departments, onClose, onForwarded }) {
             <select
               value={departmentId}
               onChange={(e) => setDepartmentId(e.target.value)}
-              className="input w-full font-medium text-base"
+              className="input w-full font-medium text-base bg-white"
               required
             >
-              <option value="">Choose Department…</option>
               {departments.map((d) => (
                 <option key={d.id} value={d.id}>{d.name}</option>
               ))}
             </select>
           </div>
+
+          {err && <p className="text-xs font-semibold text-rose-600">{err}</p>}
 
           <div className="flex gap-2 pt-2">
             <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-slate-200 py-3 font-medium text-slate-600 hover:bg-slate-50">
@@ -416,8 +427,8 @@ function ForwardModal({ patient, departments, onClose, onForwarded }) {
             </button>
             <button
               type="submit"
-              disabled={busy || !departmentId}
-              className="flex-1 rounded-xl bg-emerald-600 py-3 font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+              disabled={busy}
+              className="flex-1 rounded-xl bg-emerald-600 py-3 font-bold text-white hover:bg-emerald-700 disabled:opacity-50 transition"
             >
               {busy ? 'Assigning…' : 'Forward to Doctor'}
             </button>

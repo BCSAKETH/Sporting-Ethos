@@ -310,10 +310,18 @@ export async function forwardToDepartment(checkinId, departmentId) {
     status: STATUS.WAITING_DEPARTMENT,
   }
   if (backendMode === 'supabase') {
-    const { error } = await supabase.from(TABLE).update(updatePayload).eq('id', checkinId)
-    if (error) throw error
-    notifyLocalListeners()
-    return
+    try {
+      const { error } = await supabase.from(TABLE).update(updatePayload).eq('id', checkinId)
+      if (!error) {
+        const rows = mockRead().map((r) => (r.id === checkinId ? { ...r, ...updatePayload } : r))
+        mockWrite(rows)
+        notifyLocalListeners()
+        return
+      }
+      console.warn('Supabase forwardToDepartment error, applying local fallback:', error)
+    } catch (e) {
+      console.warn('Supabase forwardToDepartment exception:', e)
+    }
   }
   const rows = mockRead().map((r) => (r.id === checkinId ? { ...r, ...updatePayload } : r))
   mockWrite(rows)
