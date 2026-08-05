@@ -162,6 +162,18 @@ export async function nextApptId() {
   return `APT-${String(n).padStart(4, '0')}`
 }
 
+// Next queue token (Q-0001, Q-0002, …) — minted for EVERY check-in.
+export async function nextQueueId() {
+  if (backendMode === 'supabase') {
+    const { data, error } = await supabase.rpc('next_queue_id')
+    if (error) throw error
+    return data
+  }
+  const n = (parseInt(localStorage.getItem('ethos_queue_seq') || '0', 10) || 0) + 1
+  localStorage.setItem('ethos_queue_seq', String(n))
+  return `Q-${String(n).padStart(4, '0')}`
+}
+
 export function bookingType(row) {
   return row.source === 'reception' ? 'Walk-in' : 'Pre-booked'
 }
@@ -259,7 +271,10 @@ function mockStaffWrite(rows) {
 
 export async function verifyStaffAccessCode(code) {
   if (!code) return null
-  const pin = String(code).trim()
+  // Access codes are stored upper-cased (the Admin form force-uppercases on
+  // save), so normalise the entered code the same way — otherwise a code typed
+  // in a different case never matches.
+  const pin = String(code).trim().toUpperCase()
 
   if (backendMode === 'supabase') {
     const { data, error } = await supabase
@@ -349,8 +364,12 @@ export async function deleteStaff(id) {
 }
 
 export async function forwardToDepartment(checkinId, departmentId) {
+  // Assigning a department is the moment a queue-only patient becomes a booked
+  // appointment — mint the APT id here.
+  const appointment_id = await nextApptId()
   const updatePayload = {
     department_id: departmentId,
+    appointment_id,
     status: STATUS.WAITING_DEPARTMENT,
   }
 
@@ -379,12 +398,16 @@ export async function forwardToDepartment(checkinId, departmentId) {
 export async function createCheckin({ name, priority = 'normal', gender = null, age = null, source = 'self', department_id = null }) {
   const id = newId()
   const check_in_time = nowIso()
-  const appointment_id = await nextApptId()
-  const hash = await sha256Hex(receiptPayload({ appointment_id, name, check_in_time, id }))
+  const queue_id = await nextQueueId() // token for EVERY patient
+  // Appointment ID is only minted once a department is assigned. Patients who
+  // skip department selection sit in the reception queue with a queue_id only.
+  const appointment_id = department_id ? await nextApptId() : null
+  const hash = await sha256Hex(receiptPayload({ appointment_id: appointment_id || queue_id, name, check_in_time, id }))
   const initialStatus = department_id ? STATUS.WAITING_DEPARTMENT : STATUS.WAITING_RECEPTION
   const row = {
     id,
     name,
+    queue_id,
     appointment_id,
     check_in_time,
     status: initialStatus,
