@@ -288,7 +288,7 @@ function StaffModal({ staffMember, departments, onClose, onSaved }) {
       onSaved()
     } catch (e2) {
       console.error(e2)
-      setErr('Failed to save staff member.')
+      setErr(e2?.message || 'Failed to save staff member.')
       setBusy(false)
     }
   }

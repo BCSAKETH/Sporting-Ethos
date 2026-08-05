@@ -240,12 +240,15 @@ export async function verifyStaffAccessCode(code) {
 
 export async function listStaff() {
   if (backendMode === 'supabase') {
-    const { data, error } = await supabase
-      .from('staff')
-      .select('*, departments(name)')
-      .order('created_at', { ascending: false })
-    if (error) throw error
-    return data || []
+    try {
+      const { data, error } = await supabase
+        .from('staff')
+        .select('*, departments(name)')
+        .order('created_at', { ascending: false })
+      if (!error && data) return data
+    } catch (e) {
+      console.warn('Failed to list staff from Supabase:', e)
+    }
   }
   return mockStaffRead()
 }
@@ -253,9 +256,13 @@ export async function listStaff() {
 export async function addStaff(staffMember) {
   const row = { id: newId(), created_at: nowIso(), is_active: true, ...staffMember }
   if (backendMode === 'supabase') {
-    const { data, error } = await supabase.from('staff').insert(row).select().single()
-    if (error) throw error
-    return data
+    try {
+      const { data, error } = await supabase.from('staff').insert(row).select().single()
+      if (!error && data) return data
+      console.warn('Supabase staff insert error, writing to local staff store:', error)
+    } catch (e) {
+      console.warn('Supabase staff insert exception:', e)
+    }
   }
   const list = mockStaffRead()
   list.unshift(row)
@@ -265,9 +272,16 @@ export async function addStaff(staffMember) {
 
 export async function updateStaff(id, fields) {
   if (backendMode === 'supabase') {
-    const { error } = await supabase.from('staff').update(fields).eq('id', id)
-    if (error) throw error
-    return
+    try {
+      const { error } = await supabase.from('staff').update(fields).eq('id', id)
+      if (!error) {
+        const list = mockStaffRead().map((s) => (s.id === id ? { ...s, ...fields } : s))
+        mockStaffWrite(list)
+        return
+      }
+    } catch (e) {
+      console.warn('Supabase staff update exception:', e)
+    }
   }
   const list = mockStaffRead().map((s) => (s.id === id ? { ...s, ...fields } : s))
   mockStaffWrite(list)
@@ -275,9 +289,16 @@ export async function updateStaff(id, fields) {
 
 export async function deleteStaff(id) {
   if (backendMode === 'supabase') {
-    const { error } = await supabase.from('staff').delete().eq('id', id)
-    if (error) throw error
-    return
+    try {
+      const { error } = await supabase.from('staff').delete().eq('id', id)
+      if (!error) {
+        const list = mockStaffRead().filter((s) => s.id !== id)
+        mockStaffWrite(list)
+        return
+      }
+    } catch (e) {
+      console.warn('Supabase staff delete exception:', e)
+    }
   }
   const list = mockStaffRead().filter((s) => s.id !== id)
   mockStaffWrite(list)

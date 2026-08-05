@@ -217,13 +217,13 @@ function PreviousConsultationsHistory({ patientName, pastConsultations }) {
 
 function PatientMedicalFile({ row }) {
   const isAppointment = Boolean(row.appointment_id)
-  const phone = row.phone || '+91 98201 54321'
-  const bloodGroup = row.blood_group || 'O+'
-  const heightWeight = row.height && row.weight ? `${row.height} cm / ${row.weight} kg` : '172 cm / 68 kg'
-  const emergencyContact = row.emergency_contact || 'Parent / Spouse (+91 98100 11223)'
+  const phone = row.phone || 'Not recorded'
+  const bloodGroup = row.blood_group || 'Not specified'
+  const heightWeight = row.height && row.weight ? `${row.height} cm / ${row.weight} kg` : (row.height ? `${row.height} cm` : (row.weight ? `${row.weight} kg` : 'Not recorded'))
+  const emergencyContact = row.emergency_contact || 'Not recorded'
   const reasonForVisit = row.reason || row.notes_text || (isAppointment ? 'Scheduled Routine Checkup & Follow-up' : 'Walk-in Triage Consultation')
-  const activeMedications = row.active_medications || ['Paracetamol 500mg (as needed)', 'Vitamin D3 60K UI']
-  const allergies = row.allergies || 'No known drug allergies (NKDA)'
+  const activeMedications = row.active_medications || 'None recorded'
+  const allergies = row.allergies || 'No known allergies reported'
 
   return (
     <div className="mt-4 rounded-2xl border border-purple-200/70 bg-[#FAF8F5] p-4 space-y-3">
@@ -241,7 +241,9 @@ function PatientMedicalFile({ row }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
         <div className="bg-white p-2.5 rounded-xl border border-purple-100">
           <div className="text-purple-400 font-bold">Age &amp; Gender</div>
-          <div className="font-bold text-purple-950 mt-0.5">{row.age ? `${row.age} yrs` : '28 yrs'} · {row.gender || 'Male'}</div>
+          <div className="font-bold text-purple-950 mt-0.5">
+            {row.age ? `${row.age} yrs` : 'Unspecified'}{row.gender ? ` · ${row.gender}` : ''}
+          </div>
         </div>
         <div className="bg-white p-2.5 rounded-xl border border-purple-100">
           <div className="text-purple-400 font-bold">Blood Group</div>
