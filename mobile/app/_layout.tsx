@@ -15,13 +15,21 @@ import { queryClient } from "../lib/queryClient";
 
 export { ErrorBoundary } from "expo-router";
 
-SplashScreen.preventAutoHideAsync();
-SystemUI.setBackgroundColorAsync("#f8fafc");
+SplashScreen.preventAutoHideAsync().catch(() => {});
+SystemUI.setBackgroundColorAsync("#f8fafc").catch(() => {});
 
 function SplashGate() {
   const { isInitializing } = useAuth();
   useEffect(() => {
-    if (!isInitializing) SplashScreen.hideAsync();
+    let hideTimer = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 2000);
+
+    if (!isInitializing) {
+      SplashScreen.hideAsync().catch(() => {});
+      clearTimeout(hideTimer);
+    }
+    return () => clearTimeout(hideTimer);
   }, [isInitializing]);
   return null;
 }
@@ -29,7 +37,6 @@ function SplashGate() {
 function RootNavigator() {
   const { isAuthenticated, isInitializing } = useAuth();
 
-  // Hold the splash screen up rather than flashing the wrong stack.
   if (isInitializing) return null;
 
   return (

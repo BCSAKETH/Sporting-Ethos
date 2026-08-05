@@ -26,12 +26,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return;
-      setSession(session);
-      if (session) hydrateProfile();
-      setInitializing(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        if (!mounted) return;
+        setSession(session);
+        if (session) hydrateProfile();
+      })
+      .catch((err) => {
+        console.warn("AuthProvider getSession error:", err);
+      })
+      .finally(() => {
+        if (mounted) setInitializing(false);
+      });
 
     const {
       data: { subscription },
