@@ -98,10 +98,13 @@ export default function Dashboard() {
     }))
   }, [rows, deptMap])
 
-  // Reception only sees patients who need reception / skipped department selection
+  // Reception sees patients waiting for reception or currently called to counter before department assignment
   const receptionQueue = useMemo(() => {
     const unassigned = rowsWithDept.filter(
-      (r) => r.status === STATUS.WAITING_RECEPTION || r.status === STATUS.WAITING
+      (r) =>
+        r.status === STATUS.WAITING_RECEPTION ||
+        r.status === STATUS.WAITING ||
+        (r.status === STATUS.IN_CONSULT && !r.department_id)
     )
     return sortQueue(unassigned)
   }, [rowsWithDept])

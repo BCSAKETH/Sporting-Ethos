@@ -350,6 +350,12 @@ export async function forwardToDepartment(checkinId, departmentId) {
 
   if (backendMode === 'supabase') {
     try {
+      supabase.from(TABLE).select('patient_id').eq('id', checkinId).maybeSingle().then(({ data }) => {
+        if (data?.patient_id) {
+          sendPatientNotification(data.patient_id, '🏥 OPD Department Assigned', 'Your ticket has been forwarded to the Doctor OPD queue.')
+        }
+      }).catch(() => {})
+
       const { error } = await supabase.from(TABLE).update(updatePayload).eq('id', checkinId)
       if (error) {
         console.warn('Supabase forwardToDepartment error, applying local fallback:', error)
@@ -400,6 +406,16 @@ export async function createCheckin({ name, priority = 'normal', gender = null, 
 export async function updateStatus(id, status) {
   if (backendMode === 'supabase') {
     try {
+      supabase.from(TABLE).select('patient_id').eq('id', id).maybeSingle().then(({ data }) => {
+        if (data?.patient_id) {
+          if (status === STATUS.IN_CONSULT) {
+            sendPatientNotification(data.patient_id, "📣 It's Your Turn!", "Please proceed to your consultation counter / OPD room now.")
+          } else if (status === STATUS.DONE) {
+            sendPatientNotification(data.patient_id, "✓ Visit Completed", "Your OPD consultation is complete. Thank you!")
+          }
+        }
+      }).catch(() => {})
+
       const { error } = await supabase.from(TABLE).update({ status }).eq('id', id)
       if (error) console.warn('Supabase updateStatus error:', error)
     } catch (e) {

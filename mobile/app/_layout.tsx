@@ -75,6 +75,15 @@ function RootNavigator() {
   );
 }
 
+import { usePushNotifications } from "../hooks/usePushNotifications";
+import { useNotifications } from "../features/notifications/useNotifications";
+
+function NotificationListener() {
+  usePushNotifications();
+  useNotifications();
+  return null;
+}
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -82,6 +91,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <SplashGate />
+            <NotificationListener />
             <RootNavigator />
             <StatusBar style="dark" />
           </AuthProvider>
