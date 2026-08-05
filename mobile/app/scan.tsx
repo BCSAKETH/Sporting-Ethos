@@ -69,7 +69,7 @@ export default function ScanScreen() {
   }
 
   async function confirmCheckIn() {
-    if (!profile || !hospital) return;
+    if (!profile) return;
     try {
       const age = profile.date_of_birth
         ? Math.floor((Date.now() - new Date(profile.date_of_birth).getTime()) / (365.25 * 24 * 3600 * 1000))
@@ -77,20 +77,18 @@ export default function ScanScreen() {
 
       const checkin = await spotCheckIn.mutateAsync({
         patientId: profile.id,
-        hospitalId: hospital.id,
+        hospitalId: hospital?.id ?? null,
         fullName: profile.full_name,
         departmentId: selectedDeptId,
         age: age,
         gender: profile.gender,
         phone: profile.phone,
-        bloodGroup: profile.blood_group,
-        height: profile.height_cm,
-        weight: profile.weight_kg,
       });
       setCheckinId(checkin.id);
       setStage("success");
-    } catch {
-      setStage("not-found");
+    } catch (err: any) {
+      console.error("Checkin submission failed:", err);
+      resetScanner();
     }
   }
 

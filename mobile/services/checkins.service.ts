@@ -22,37 +22,32 @@ export async function getMyCheckin(checkinId: string): Promise<Checkin | null> {
 
 export interface SpotCheckInInput {
   patientId: string;
-  hospitalId: string;
+  hospitalId?: string | null;
   fullName: string;
   departmentId?: string | null;
   age?: number | null;
   gender?: string | null;
   phone?: string | null;
-  bloodGroup?: string | null;
-  height?: number | null;
-  weight?: number | null;
 }
 
 /** Creates a walk-in check-in tied to the logged-in patient's profile (the QR spot-registration flow). */
 export async function spotCheckIn(input: SpotCheckInInput): Promise<Checkin> {
   const initialStatus = input.departmentId ? "waiting_department" : "waiting_reception";
+  const payload: any = {
+    name: input.fullName,
+    patient_id: input.patientId,
+    hospital_id: input.hospitalId ?? null,
+    department_id: input.departmentId ?? null,
+    status: initialStatus,
+    priority: "normal",
+    source: "self",
+    age: input.age ?? null,
+    gender: input.gender ?? null,
+  };
+
   const { data, error } = await supabase
     .from("checkins")
-    .insert({
-      name: input.fullName,
-      patient_id: input.patientId,
-      hospital_id: input.hospitalId,
-      department_id: input.departmentId ?? null,
-      status: initialStatus,
-      priority: "normal",
-      source: "self",
-      age: input.age ?? null,
-      gender: input.gender ?? null,
-      phone: input.phone ?? null,
-      blood_group: input.bloodGroup ?? null,
-      height: input.height ?? null,
-      weight: input.weight ?? null,
-    })
+    .insert(payload)
     .select()
     .single();
   if (error) throw error;
