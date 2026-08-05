@@ -3,6 +3,8 @@ import { QRCodeCanvas } from 'qrcode.react'
 import Logo from '../components/Logo.jsx'
 import MetricsStrip from '../components/MetricsStrip.jsx'
 import ReportsPanel from '../components/ReportsPanel.jsx'
+import WardManagement from '../components/WardManagement.jsx'
+import Patient360 from '../components/Patient360.jsx'
 import { clearStaffSession, getStaffSession } from './AccessGate.jsx'
 import {
   listStaff,
@@ -15,12 +17,14 @@ import {
 } from '../lib/store.js'
 
 export default function Admin() {
-  const [tab, setTab] = useState('staff') // 'staff' | 'analytics' | 'qr'
+  const [tab, setTab] = useState('staff') // 'staff' | 'patients' | 'wards' | 'analytics' | 'qr'
   const [staffList, setStaffList] = useState([])
   const [departments, setDepartments] = useState([])
   const [rows, setRows] = useState([])
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingStaff, setEditingStaff] = useState(null)
+  const [profilePatient, setProfilePatient] = useState(null)
+  const [patientQuery, setPatientQuery] = useState('')
 
   const session = getStaffSession()
 
@@ -80,6 +84,22 @@ export default function Admin() {
               }`}
             >
               Staff &amp; Access Codes
+            </button>
+            <button
+              onClick={() => setTab('patients')}
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
+                tab === 'patients' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Patients 360°
+            </button>
+            <button
+              onClick={() => setTab('wards')}
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
+                tab === 'wards' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Wards &amp; Beds
             </button>
             <button
               onClick={() => setTab('analytics')}
@@ -206,6 +226,14 @@ export default function Admin() {
               </div>
             </div>
           </div>
+        ) : tab === 'patients' ? (
+          <PatientsTab rows={rows} query={patientQuery} setQuery={setPatientQuery} onOpen={setProfilePatient} />
+        ) : tab === 'wards' ? (
+          <div className="fade-up">
+            <h1 className="text-xl font-bold text-slate-900 mb-1">Inpatient Wards &amp; Beds</h1>
+            <p className="text-sm text-slate-500 mb-5">Live occupancy matrix, bed allocation, and discharges.</p>
+            <WardManagement />
+          </div>
         ) : tab === 'analytics' ? (
           <div className="space-y-6 fade-up">
             <MetricsStrip {...metrics} />
@@ -240,6 +268,69 @@ export default function Admin() {
           }}
         />
       )}
+
+      {profilePatient && (
+        <Patient360 row={profilePatient} departments={departments} onClose={() => setProfilePatient(null)} />
+      )}
+    </div>
+  )
+}
+
+function PatientsTab({ rows, query, setQuery, onOpen }) {
+  const q = query.trim().toLowerCase()
+  const list = q
+    ? rows.filter(
+        (r) =>
+          (r.name || '').toLowerCase().includes(q) ||
+          (r.queue_id || '').toLowerCase().includes(q) ||
+          (r.appointment_id || '').toLowerCase().includes(q)
+      )
+    : rows
+  const sorted = [...list].sort((a, b) => new Date(b.check_in_time) - new Date(a.check_in_time))
+
+  return (
+    <div className="space-y-4 fade-up">
+      <div>
+        <h1 className="text-xl font-bold text-slate-900">Patient 360° Directory</h1>
+        <p className="text-sm text-slate-500">Click a patient to open their full profile — live status, prescriptions, and billing.</p>
+      </div>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search name, Queue ID, or ticket…"
+        className="input w-full max-w-md"
+      />
+      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wider text-slate-400 border-b border-slate-100 bg-slate-50">
+                <th className="px-5 py-3 font-semibold">Patient</th>
+                <th className="px-5 py-3 font-semibold">ID</th>
+                <th className="px-5 py-3 font-semibold">Status</th>
+                <th className="px-5 py-3 font-semibold text-right">Profile</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.length === 0 ? (
+                <tr><td colSpan={4} className="px-5 py-8 text-center text-slate-400">No patients yet.</td></tr>
+              ) : (
+                sorted.map((r) => (
+                  <tr key={r.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 cursor-pointer" onClick={() => onOpen(r)}>
+                    <td className="px-5 py-3 font-bold text-slate-900">
+                      {r.name}
+                      {r.priority === 'emergency' && <span className="ml-2 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase">Emergency</span>}
+                    </td>
+                    <td className="px-5 py-3 font-mono text-xs text-slate-600">{r.queue_id || r.appointment_id || '—'}</td>
+                    <td className="px-5 py-3 text-slate-600">{r.status}</td>
+                    <td className="px-5 py-3 text-right"><span className="text-emerald-700 font-semibold text-xs">Open →</span></td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }
