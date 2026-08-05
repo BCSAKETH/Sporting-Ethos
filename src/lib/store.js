@@ -347,28 +347,21 @@ export async function forwardToDepartment(checkinId, departmentId) {
     department_id: departmentId,
     status: STATUS.WAITING_DEPARTMENT,
   }
-  const allCheckins = await listCheckins()
-  const target = allCheckins.find((r) => r.id === checkinId)
-  if (target?.patient_id) {
-    sendPatientNotification(target.patient_id, '🏥 OPD Department Assigned', 'Your ticket has been assigned to the doctor OPD queue.')
-  }
 
   if (backendMode === 'supabase') {
     try {
       const { error } = await supabase.from(TABLE).update(updatePayload).eq('id', checkinId)
-      if (!error) {
-        const rows = mockRead().map((r) => (r.id === checkinId ? { ...r, ...updatePayload } : r))
-        mockWrite(rows)
-        notifyLocalListeners()
-        return
+      if (error) {
+        console.warn('Supabase forwardToDepartment error, applying local fallback:', error)
       }
-      console.warn('Supabase forwardToDepartment error, applying local fallback:', error)
     } catch (e) {
       console.warn('Supabase forwardToDepartment exception:', e)
     }
   }
+
   const rows = mockRead().map((r) => (r.id === checkinId ? { ...r, ...updatePayload } : r))
   mockWrite(rows)
+  notifyLocalListeners()
 }
 
 export async function createCheckin({ name, priority = 'normal', gender = null, age = null, source = 'self', department_id = null }) {
@@ -405,24 +398,18 @@ export async function createCheckin({ name, priority = 'normal', gender = null, 
 }
 
 export async function updateStatus(id, status) {
-  const allCheckins = await listCheckins()
-  const target = allCheckins.find((r) => r.id === id)
-  if (target?.patient_id) {
-    if (status === STATUS.IN_CONSULT) {
-      sendPatientNotification(target.patient_id, "📣 It's Your Turn!", `Please proceed to ${target.department_name || 'Consultation Counter'} now.`)
-    } else if (status === STATUS.WAITING_RECEPTION || status === STATUS.WAITING) {
-      sendPatientNotification(target.patient_id, '📢 Call Next — Reception Desk', 'Please approach Reception Counter 1.')
+  if (backendMode === 'supabase') {
+    try {
+      const { error } = await supabase.from(TABLE).update({ status }).eq('id', id)
+      if (error) console.warn('Supabase updateStatus error:', error)
+    } catch (e) {
+      console.warn('Supabase updateStatus exception:', e)
     }
   }
 
-  if (backendMode === 'supabase') {
-    const { error } = await supabase.from(TABLE).update({ status }).eq('id', id)
-    if (error) throw error
-    notifyLocalListeners()
-    return
-  }
   const rows = mockRead().map((r) => (r.id === id ? { ...r, status } : r))
   mockWrite(rows)
+  notifyLocalListeners()
 }
 
 export async function findCheckinByAppointment(appointmentId) {

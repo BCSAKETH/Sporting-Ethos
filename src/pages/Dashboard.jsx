@@ -119,18 +119,16 @@ export default function Dashboard() {
     setCalledIds((prev) => new Set(prev).add(first.id))
     chime()
     announce(`Patient ${first.name}, please proceed to Reception Counter 1`)
-    setForwardPatient(first)
+    updateStatus(first.id, STATUS.IN_CONSULT)
   }
 
   function changeStatus(id, status) {
     if (status === STATUS.IN_CONSULT) {
       setCalledIds((prev) => new Set(prev).add(id))
-      const row = receptionQueue.find((r) => r.id === id) || checkins.find((r) => r.id === id)
+      const row = receptionQueue.find((r) => r.id === id) || rows.find((r) => r.id === id)
       if (row) {
         chime()
         announce(`Patient ${row.name}, please proceed to Reception Counter 1`)
-        setForwardPatient(row)
-        return
       }
     }
     updateStatus(id, status)
