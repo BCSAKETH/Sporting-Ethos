@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   subscribeIPD,
-  admitPatient,
-  dischargePatient,
   flagReadyForDischarge,
   setBedStatus,
   roomDays,
@@ -19,7 +17,6 @@ const BED_STYLE = {
 // Inpatient ward / bed allocation console — reused by the Admin & Doctor views.
 export default function WardManagement() {
   const [tree, setTree] = useState([])
-  const [admitTarget, setAdmitTarget] = useState(null) // { ward, room, bed }
   const [dischargeTarget, setDischargeTarget] = useState(null) // { ward, room, bed }
 
   useEffect(() => subscribeIPD(setTree), [])
@@ -34,8 +31,9 @@ export default function WardManagement() {
   }, [tree])
 
   function onBedClick(ward, room, bed) {
-    if (bed.status === 'Available' || bed.status === 'Reserved') setAdmitTarget({ ward, room, bed })
-    else if (bed.status === 'Occupied') setDischargeTarget({ ward, room, bed })
+    // Admissions & discharges are Reception's authority. The ward console can
+    // only flag an occupied bed for discharge or mark a cleaned bed available.
+    if (bed.status === 'Occupied') setDischargeTarget({ ward, room, bed })
     else if (bed.status === 'Cleaning') setBedStatus(bed.id, 'Available').catch(console.error)
   }
 
@@ -51,9 +49,9 @@ export default function WardManagement() {
       </div>
 
       <p className="text-xs text-slate-500">
-        Click an <b className="text-emerald-700">Available</b> bed to admit · an{' '}
-        <b className="text-rose-700">Occupied</b> bed to discharge · a{' '}
-        <b className="text-amber-600">Cleaning</b> bed to mark cleaned.
+        Live occupancy. Click an <b className="text-rose-700">Occupied</b> bed to flag for discharge · a{' '}
+        <b className="text-amber-600">Cleaning</b> bed to mark cleaned. Admissions &amp; discharges are done at{' '}
+        <b className="text-slate-700">Reception</b>.
       </p>
 
       {tree.length === 0 ? (
@@ -111,9 +109,6 @@ export default function WardManagement() {
         </div>
       )}
 
-      {admitTarget && (
-        <AdmitModal target={admitTarget} onClose={() => setAdmitTarget(null)} />
-      )}
       {dischargeTarget && (
         <DischargeModal target={dischargeTarget} onClose={() => setDischargeTarget(null)} />
       )}
@@ -130,82 +125,14 @@ function Stat({ label, value, tone }) {
   )
 }
 
-function AdmitModal({ target, onClose }) {
-  const { ward, room, bed } = target
-  const [name, setName] = useState('')
-  const [nurse, setNurse] = useState('')
-  const [expected, setExpected] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-
-  async function submit(e) {
-    e.preventDefault()
-    if (!name.trim()) return setErr('Enter the patient name.')
-    setBusy(true)
-    setErr('')
-    try {
-      await admitPatient({
-        patient_name: name.trim(),
-        department_id: ward.department_id || null,
-        ward_id: ward.id,
-        room_id: room.id,
-        bed_id: bed.id,
-        nurse_name: nurse.trim() || null,
-        expected_discharge: expected || null,
-      })
-      onClose()
-    } catch (e2) {
-      setErr(e2?.message || 'Admission failed.')
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Modal onClose={onClose} title="Admit Patient">
-      <p className="text-sm text-slate-600">
-        <b>{ward.name}</b> → Room {room.room_number} ({room.room_type}) → Bed{' '}
-        <b>{bed.bed_number}</b> · {rupees(room.daily_rate)}/day
-      </p>
-      <form onSubmit={submit} className="mt-4 space-y-3">
-        <input autoFocus value={name} onChange={(e) => { setName(e.target.value); setErr('') }} placeholder="Patient full name" className="input w-full" />
-        <input value={nurse} onChange={(e) => setNurse(e.target.value)} placeholder="Assigned nurse (optional)" className="input w-full" />
-        <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Expected discharge (optional)</span>
-          <input type="date" value={expected} onChange={(e) => setExpected(e.target.value)} className="input w-full mt-1" />
-        </label>
-        {err && <p className="text-xs font-semibold text-rose-600">{err}</p>}
-        <div className="flex gap-2 pt-2">
-          <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-slate-200 py-3 font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
-          <button type="submit" disabled={busy} className="flex-1 rounded-xl bg-emerald-600 py-3 font-bold text-white hover:bg-emerald-700 disabled:opacity-60">
-            {busy ? 'Admitting…' : 'Admit to Bed'}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  )
-}
-
 function DischargeModal({ target, onClose }) {
   const { room, bed } = target
   const adm = bed.admission
   const [busy, setBusy] = useState(false)
-  const [done, setDone] = useState(null)
 
   const days = adm ? roomDays(adm.admission_date) : 0
   const rate = Number(room.daily_rate || 0)
   const running = days * rate
-
-  async function confirm() {
-    if (!adm) return
-    setBusy(true)
-    try {
-      const result = await dischargePatient(adm.id)
-      setDone(result)
-    } catch (e) {
-      console.error(e)
-      setBusy(false)
-    }
-  }
 
   async function flagReady() {
     if (!adm) return
@@ -220,20 +147,9 @@ function DischargeModal({ target, onClose }) {
   }
 
   return (
-    <Modal onClose={onClose} title={done ? 'Discharge Complete' : 'Discharge Patient'}>
+    <Modal onClose={onClose} title="Flag for Discharge">
       {!adm ? (
         <p className="text-sm text-slate-500">No active admission on this bed.</p>
-      ) : done ? (
-        <div className="space-y-3">
-          <p className="text-sm text-slate-700"><b>{adm.patient_name}</b> discharged. Bed sent to cleaning.</p>
-          <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4">
-            <div className="flex justify-between text-sm"><span>Days ({rupees(rate)}/day)</span><span className="font-bold">{done.days}</span></div>
-            <div className="flex justify-between text-lg font-bold text-slate-900 mt-1 border-t border-emerald-200 pt-2">
-              <span>Room Charges</span><span>{rupees(done.room_charges)}</span>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-full rounded-xl bg-emerald-600 py-3 font-bold text-white hover:bg-emerald-700">Done</button>
-        </div>
       ) : (
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
@@ -247,13 +163,11 @@ function DischargeModal({ target, onClose }) {
               <span>Running Room Bill</span><span>{rupees(running)}</span>
             </div>
           </div>
-          <button onClick={flagReady} disabled={busy} className="w-full rounded-xl border border-purple-300 bg-purple-50 py-2.5 font-bold text-purple-800 hover:bg-purple-100 disabled:opacity-50">
-            🏳️ Flag Ready for Discharge → Reception
-          </button>
+          <p className="text-xs text-slate-500">Flagging sends this patient to Reception's <b>Discharge Queue</b> for the final consolidated bill &amp; checkout.</p>
           <div className="flex gap-2 pt-1">
             <button onClick={onClose} className="flex-1 rounded-xl border border-slate-200 py-3 font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
-            <button onClick={confirm} disabled={busy} className="flex-1 rounded-xl bg-rose-600 py-3 font-bold text-white hover:bg-rose-700 disabled:opacity-60">
-              {busy ? 'Discharging…' : 'Discharge Now'}
+            <button onClick={flagReady} disabled={busy} className="flex-1 rounded-xl bg-purple-600 py-3 font-bold text-white hover:bg-purple-700 disabled:opacity-50">
+              {busy ? 'Flagging…' : '🏳️ Flag Ready for Discharge'}
             </button>
           </div>
         </div>
