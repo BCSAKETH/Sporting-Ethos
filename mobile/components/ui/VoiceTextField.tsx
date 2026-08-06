@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, Text, TextInput, View, type TextInputProps } from "react-native";
 import { Mic, MicOff, Loader } from "lucide-react-native";
-import { useAudioRecorder, AudioModule, RecordingPresets, setAudioModeAsync } from "expo-audio";
+import { useAudioRecorder, requestRecordingPermissionsAsync, RecordingPresets, setAudioModeAsync } from "expo-audio";
 import { transcribeAudio } from "../../services/triage.service";
 
 interface VoiceTextFieldProps extends TextInputProps {
@@ -23,18 +23,24 @@ export function VoiceTextField({
 }: VoiceTextFieldProps) {
   const [isListening, setIsListening] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [localErr, setLocalErr] = useState("");
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   async function startRec() {
+    setLocalErr("");
     try {
-      const perm = await AudioModule.requestRecordingPermissionsAsync();
-      if (!perm.granted) return;
+      const perm = await requestRecordingPermissionsAsync();
+      if (!perm.granted) {
+        setLocalErr("Microphone permission denied — enable it in Settings.");
+        return;
+      }
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record();
       setIsListening(true);
     } catch (e) {
       console.warn("startRec failed", e);
+      setLocalErr(`Couldn't start recording: ${(e as Error)?.message ?? "unknown"}`);
     }
   }
 
@@ -44,12 +50,16 @@ export function VoiceTextField({
     try {
       await recorder.stop();
       const uri = recorder.uri;
-      if (uri) {
-        const text = await transcribeAudio(uri);
-        if (text) onChangeText(value ? `${value} ${text}`.trim() : text);
+      if (!uri) {
+        setLocalErr("No audio captured — try again.");
+        return;
       }
+      const text = await transcribeAudio(uri);
+      if (text.trim()) onChangeText(value ? `${value} ${text}`.trim() : text);
+      else setLocalErr("Couldn't transcribe — speak clearly and try again.");
     } catch (e) {
       console.warn("transcribe failed", e);
+      setLocalErr(`Transcription failed: ${(e as Error)?.message ?? "unknown"}`);
     } finally {
       setBusy(false);
     }
@@ -98,6 +108,7 @@ export function VoiceTextField({
       </View>
 
       {error ? <Text className="mt-1 text-sm text-red-600">{error}</Text> : null}
+      {localErr ? <Text className="mt-1 text-xs text-amber-600">{localErr}</Text> : null}
     </View>
   );
 }
