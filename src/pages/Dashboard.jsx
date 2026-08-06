@@ -13,6 +13,7 @@ import {
   forwardToDepartment,
   reassignDepartment,
   listDepartments,
+  sendPatientNotification,
 } from '../lib/store.js'
 import { autoPrimeVoice, announce, chime } from '../lib/voice.js'
 import { sendIntercom, onIntercom } from '../lib/intercom.js'
@@ -119,13 +120,17 @@ export default function Dashboard() {
     return rowsWithDept.filter((r) => r.status === STATUS.IN_CONSULT)
   }, [rowsWithDept])
 
-  // Emergency lookup — match a patient by Queue ID (Q-0001) or APT id.
+  // Emergency lookup — match an ACTIVE patient by Queue ID (Q-0001) or APT id.
+  // A completed/left/no-show visit can't be re-prioritised, so it's excluded.
   const emgMatch = useMemo(() => {
     const q = emgQuery.trim().toUpperCase()
     if (!q) return null
+    const terminal = new Set([STATUS.DONE, STATUS.LEFT, STATUS.NO_SHOW])
     return (
       rowsWithDept.find(
-        (r) => (r.queue_id || '').toUpperCase() === q || (r.appointment_id || '').toUpperCase() === q
+        (r) =>
+          !terminal.has(r.status) &&
+          ((r.queue_id || '').toUpperCase() === q || (r.appointment_id || '').toUpperCase() === q)
       ) || null
     )
   }, [emgQuery, rowsWithDept])
@@ -151,6 +156,9 @@ export default function Dashboard() {
     setCalledIds((prev) => new Set(prev).add(row.id))
     chime()
     announce(`Patient ${row.name}, please proceed to Reception Counter 1`)
+    if (row.patient_id) {
+      sendPatientNotification(row.patient_id, '📣 Please proceed to Reception', 'Reception is calling you to the counter now.')
+    }
   }
 
   function changeStatus(id, status) {

@@ -20,6 +20,41 @@ export async function getMyCheckin(checkinId: string): Promise<Checkin | null> {
   return data;
 }
 
+export interface ActiveVisit {
+  id: string;
+  queueId: string | null;
+  appointmentId: string | null;
+  status: string;
+  priority: string | null;
+  department: string | null;
+  checkInTime: string;
+}
+
+// The patient's current in-progress visit (queue token → APT), live.
+export async function getMyActiveCheckin(patientId: string): Promise<ActiveVisit | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db: any = supabase;
+  const { data, error } = await db
+    .from("checkins")
+    .select("id, queue_id, appointment_id, status, priority, check_in_time, department_id, departments(name)")
+    .eq("patient_id", patientId)
+    .in("status", ["waiting", "waiting_reception", "waiting_department", "in_consult", "paused"])
+    .order("check_in_time", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    id: data.id,
+    queueId: data.queue_id ?? null,
+    appointmentId: data.appointment_id ?? null,
+    status: data.status,
+    priority: data.priority ?? null,
+    department: data.departments?.name ?? null,
+    checkInTime: data.check_in_time,
+  };
+}
+
 export interface SpotCheckInInput {
   patientId: string;
   hospitalId?: string | null;

@@ -3,6 +3,7 @@ import { Text, View, Pressable } from "react-native";
 import { ScreenContainer } from "../../components/ui/ScreenContainer";
 import { Card } from "../../components/ui/Card";
 import CalledAlert from "../../components/CalledAlert";
+import CurrentVisit from "../../components/CurrentVisit";
 import LabOrders from "../../components/LabOrders";
 import { useAuth } from "../../features/auth/useAuth";
 import { useActiveMedications } from "../../features/medications/useMedications";
@@ -38,6 +39,9 @@ export default function DashboardScreen() {
           </View>
         </Pressable>
       </View>
+
+      {/* Live current visit — queue token → appointment id → status */}
+      <CurrentVisit />
 
       {/* Health Summary */}
       <Text className="mb-2 mt-6 text-base font-bold text-slate-900">Patient Health Profile</Text>

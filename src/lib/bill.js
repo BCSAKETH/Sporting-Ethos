@@ -1,5 +1,6 @@
 // Pharmacy bill / invoice PDF, tied to the appointment ID.
 import { jsPDF } from 'jspdf'
+import { openOrSavePDF } from './chart.js'
 
 export const rupees = (n) => `Rs. ${Number(n || 0).toFixed(2)}`
 
@@ -57,5 +58,5 @@ export function downloadBillPDF(patient, bill) {
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(148, 163, 184)
   doc.text('Thank you. Sporting Ethos Pharmacy · This is a computer-generated bill.', M, 800)
 
-  doc.save(`bill-${patient.appointment_id || 'patient'}.pdf`)
+  openOrSavePDF(doc, `bill-${patient.appointment_id || 'patient'}.pdf`)
 }

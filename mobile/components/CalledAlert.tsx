@@ -8,24 +8,40 @@ import { useAuth } from "../features/auth/useAuth";
 export default function CalledAlert() {
   const { profile } = useAuth();
   const [called, setCalled] = useState(false);
+  const [alert, setAlert] = useState<{ title: string; body: string }>({
+    title: "📣 It's your turn!",
+    body: "Please proceed now.",
+  });
   const blink = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (!profile?.id) return;
     const channel = supabase
-      .channel(`my-checkin-${profile.id}-${Date.now()}`)
+      .channel(`my-alerts-${profile.id}-${Date.now()}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "checkins", filter: `patient_id=eq.${profile.id}` },
         (payload) => {
           const status = (payload.new as { status?: string })?.status;
           if (status === "in_consult") {
+            setAlert({ title: "📣 It's your turn!", body: "Please proceed to your consultation room now." });
             setCalled(true);
             Vibration.vibrate([0, 400, 200, 400, 200, 400]);
           } else if (status === "done") {
             setCalled(false);
             Vibration.cancel();
           }
+        },
+      )
+      // Reception "call to counter" and other call events arrive as notifications.
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications", filter: `patient_id=eq.${profile.id}` },
+        (payload) => {
+          const n = payload.new as { title?: string; body?: string };
+          setAlert({ title: n?.title ?? "📣 It's your turn!", body: n?.body ?? "Please proceed now." });
+          setCalled(true);
+          Vibration.vibrate([0, 400, 200, 400]);
         },
       )
       .subscribe();
@@ -57,8 +73,8 @@ export default function CalledAlert() {
         }}
         className="rounded-2xl bg-emerald-600 p-4 mb-3"
       >
-        <Text className="text-white font-extrabold text-lg">📣 It&apos;s your turn!</Text>
-        <Text className="text-emerald-100 text-sm mt-0.5">Please proceed to your consultation room now. Tap to dismiss.</Text>
+        <Text className="text-white font-extrabold text-lg">{alert.title}</Text>
+        <Text className="text-emerald-100 text-sm mt-0.5">{alert.body} Tap to dismiss.</Text>
       </Pressable>
     </Animated.View>
   );

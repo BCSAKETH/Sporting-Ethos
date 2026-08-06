@@ -553,7 +553,8 @@ export function subscribeMedicines(callback) {
   if (backendMode === 'supabase') {
     const sub = supabase.channel(`medicines-rt-${++channelSeq}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'medicines' }, push).subscribe()
-    return () => { cancelled = true; supabase.removeChannel(sub) }
+    const poll = setInterval(push, 6000)
+    return () => { cancelled = true; clearInterval(poll); supabase.removeChannel(sub) }
   }
   const onStorage = (e) => { if (e.key === MED_KEY) push() }
   medListeners.add(push)
@@ -623,9 +624,12 @@ export function subscribe(callback) {
       .channel(`checkins-realtime-${++channelSeq}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, push)
       .subscribe()
+    // Safety-net poll so the console stays live even if the realtime socket drops.
+    const poll = setInterval(push, 5000)
     return () => {
       cancelled = true
       localListeners.delete(push)
+      clearInterval(poll)
       supabase.removeChannel(sub)
     }
   }
@@ -774,7 +778,8 @@ export function subscribeIPD(callback) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'beds' }, push)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'admissions' }, push)
       .subscribe()
-    return () => { cancelled = true; supabase.removeChannel(sub) }
+    const poll = setInterval(push, 5000)
+    return () => { cancelled = true; clearInterval(poll); supabase.removeChannel(sub) }
   }
   return () => { cancelled = true }
 }
@@ -915,7 +920,8 @@ export function subscribeLabOrders(callback) {
       .channel(`lab-orders-rt-${++channelSeq}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lab_orders' }, push)
       .subscribe()
-    return () => { cancelled = true; supabase.removeChannel(sub) }
+    const poll = setInterval(push, 6000)
+    return () => { cancelled = true; clearInterval(poll); supabase.removeChannel(sub) }
   }
   return () => { cancelled = true }
 }

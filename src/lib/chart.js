@@ -7,6 +7,11 @@ import { jsPDF } from 'jspdf'
 // routed to the backend service by vercel.json. Override with VITE_CHART_API_URL.
 const BACKEND_URL = import.meta.env.VITE_CHART_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
+// Direct Groq (browser). The staff console already ships VITE_GROQ_API_KEY.
+const GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY || ''
+const GROQ_WHISPER = 'https://api.groq.com/openai/v1/audio/transcriptions'
+const GROQ_CHAT = 'https://api.groq.com/openai/v1/chat/completions'
+
 // A canned result used when the backend / mic is unavailable, so the flow is
 // always demoable.
 const FALLBACK_NOTE = {
@@ -54,6 +59,47 @@ function blobToBase64(blob) {
 // Uses JSON (base64 audio) so it works with both the local FastAPI backend and
 // the Vercel Node serverless function.
 export async function generateNotes({ audioBlob, transcript = '' }) {
+  // 1) Direct Groq: Whisper transcribes the audio, Llama structures the note.
+  if (GROQ_KEY) {
+    try {
+      let text = transcript
+      if (audioBlob) {
+        const form = new FormData()
+        form.append('file', audioBlob, `consultation.${(audioBlob.type || 'audio/webm').split('/')[1].split(';')[0]}`)
+        form.append('model', 'whisper-large-v3')
+        const r = await fetch(GROQ_WHISPER, { method: 'POST', headers: { Authorization: `Bearer ${GROQ_KEY}` }, body: form })
+        if (!r.ok) throw new Error(`Whisper ${r.status}`)
+        text = (await r.json()).text || ''
+      }
+      if (!text.trim()) throw new Error('empty transcript')
+      const res = await fetch(GROQ_CHAT, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: 'You are a clinical scribe. From the consultation transcript, extract the visit. Return ONLY JSON: {"summary":"1-2 sentence summary","symptoms":["..."],"prescriptions":["medicine dose frequency"],"actions":["advice / follow-up"]}.' },
+            { role: 'user', content: text },
+          ],
+        }),
+      })
+      if (!res.ok) throw new Error(`Groq chat ${res.status}`)
+      const parsed = JSON.parse((await res.json()).choices?.[0]?.message?.content || '{}')
+      return {
+        summary: parsed.summary || '',
+        symptoms: parsed.symptoms || [],
+        prescriptions: parsed.prescriptions || [],
+        actions: parsed.actions || [],
+        transcript: text,
+        engine: 'groq',
+      }
+    } catch (e) {
+      console.warn('Direct Groq charting failed, trying backend proxy:', e.message)
+    }
+  }
+  // 2) Fallback: the /api/chart proxy (server holds the key).
   try {
     const audioBase64 = audioBlob ? await blobToBase64(audioBlob) : ''
     const res = await fetch(`${BACKEND_URL}/api/chart`, {
@@ -61,8 +107,8 @@ export async function generateNotes({ audioBlob, transcript = '' }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ audioBase64, transcript, mime: audioBlob?.type || 'audio/webm' }),
     })
-    if (!res.ok) throw new Error(`Backend responded ${res.status}`)
-    return await res.json()
+    if (res.ok) return await res.json()
+    throw new Error(`Backend responded ${res.status}`)
   } catch (e) {
     console.warn('charting backend unavailable, using fallback:', e.message)
     return { ...FALLBACK_NOTE, transcript }
@@ -178,5 +224,19 @@ export function downloadNotesPDF(patient, notes) {
     800
   )
 
-  doc.save(`consultation-${patient.name.replace(/\s+/g, '-').toLowerCase()}.pdf`)
+  openOrSavePDF(doc, `consultation-${patient.name.replace(/\s+/g, '-').toLowerCase()}.pdf`)
+}
+
+// Open the PDF in a print-ready popup window; fall back to a download if the
+// browser blocks the popup.
+export function openOrSavePDF(doc, filename) {
+  try {
+    doc.autoPrint()
+    const url = doc.output('bloburl')
+    const w = window.open(url, '_blank')
+    if (w) return
+  } catch {
+    /* popup blocked / unsupported — download instead */
+  }
+  doc.save(filename)
 }

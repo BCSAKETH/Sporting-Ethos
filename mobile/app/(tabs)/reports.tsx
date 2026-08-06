@@ -78,6 +78,7 @@ export default function ReportsScreen() {
     queryKey: ["patient-records", profile?.id],
     queryFn: () => getPatientRecords(profile!.id),
     enabled: !!profile?.id,
+    refetchInterval: 8000,
   });
 
   const reports = data?.reports ?? [];
